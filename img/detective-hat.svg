@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" class="detective-character">
+  <!-- Simple Detective Hat Silhouette -->
+  
+  <!-- Hat crown (top) -->
+  <ellipse cx="100" cy="60" rx="70" ry="40" fill="#1a1a1a" stroke="none"/>
+  
+  <!-- Hat brim (front) -->
+  <ellipse cx="100" cy="100" rx="80" ry="15" fill="#1a1a1a" stroke="none"/>
+  
+  <!-- Ear flaps (left) -->
+  <ellipse cx="30" cy="100" rx="20" ry="50" fill="#1a1a1a" stroke="none"/>
+  
+  <!-- Ear flaps (right) -->
+  <ellipse cx="170" cy="100" rx="20" ry="50" fill="#1a1a1a" stroke="none"/>
+  
+  <!-- Bow at top (connecting ear flaps) -->
+  <ellipse cx="100" cy="50" rx="15" ry="8" fill="#1a1a1a" stroke="none"/>
+  <ellipse cx="100" cy="50" rx="8" ry="15" fill="#1a1a1a" stroke="none"/>
+</svg>
