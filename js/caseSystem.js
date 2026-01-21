@@ -4,32 +4,27 @@ const caseSystem = {
     completedCases: new Set(),
     carriedForwardData: {}, // Store data carried forward between cases
     
-    cases: [
+        cases: [
         {
             id: 1,
             title: "The Phantom Receipt",
             story: "The Mouri Detective Agency office is in chaos. Kogoro is bellowing about a 'criminal conspiracy' because his precious expense receipt has vanished. Ran tries to calm him down while frantically searching drawers. Conan, however, notices something peculiar on the desk blotter—a faint impression that wasn't there before. It's a code. Written in ink that matches none of the office pens. This isn't random vandalism. This is a message. And Conan's sharp eyes suggest it connects to something much larger lurking in Beika City's shadows.",
-            task: "Access the case_files table and locate the entry for case_id = 1. The case summary contains a mysterious code that will be crucial for tracking the BLACK_STAR operative. Extract and display: case_id, case_title, location, and summary columns.",
+            task: "Access the case_files table and locate the entry for case_id = 1. The case summary contains a mysterious code that you must extract. Return: case_id, case_title, location, summary.",
             validation: {
                 requiredColumns: ['case_id', 'case_title', 'location', 'summary'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
                     const row = result.values[0];
-                    
-                    // Get column names from result
+
                     const columns = result.columns || [];
-                    
-                    // Find indices of required columns
                     const caseIdIdx = columns.indexOf('case_id');
                     const summaryIdx = columns.indexOf('summary');
-                    
-                    // Check case_id = 1 (handle both string and number)
+
                     const caseId = caseIdIdx >= 0 ? row[caseIdIdx] : row[0];
                     const caseIdValue = typeof caseId === 'string' ? parseInt(caseId) : caseId;
-                    
+
                     if (caseIdValue === 1) {
-                        // Extract code like B7 from summary - MUST be in the query results
                         const summary = summaryIdx >= 0 ? row[summaryIdx] : (row[3] || row[row.length - 1]);
                         if (summary && typeof summary === 'string') {
                             const codeMatch = summary.match(/\b([A-Z]\d+)\b/);
@@ -39,7 +34,7 @@ const caseSystem = {
                                 return true;
                             } else {
                                 console.warn('Case 1: No code found in summary:', summary);
-                                return false; // Code must be in the results
+                                return false;
                             }
                         }
                         return false;
@@ -52,46 +47,27 @@ const caseSystem = {
             id: 2,
             title: "The Poirot Cipher",
             story: "Conan leads the team to Cafe Poirot, Beika City's unofficial detective crossroads. The atmosphere is tense—Amuro Tooru is polishing glasses with unusual focus. He mentions a recent incident: someone swapped the sugar jars, leaving behind a note with strange symbols. Conan's mind races back to the code from the agency. He doesn't mention sugar. Instead, he asks about patterns. Amuro's eyes narrow as he sets down his glass. 'So you've noticed it too,' he says quietly. 'The BLACK_STAR has been busy.'",
-            task: "Using the mysterious code you uncovered in Case 1, search the case_files table for all cases whose summary contains this exact code. This will reveal the pattern the BLACK_STAR operative is following. Display: case_id, case_title, date, location, and summary columns.",
+            task: "Locations are now unlocked. Using the code you extracted in Case 1, decode it using the locations table. Return: location_code, location_name, district.",
             validation: {
-                requiredColumns: ['case_id', 'case_title', 'date', 'location', 'summary'],
+                requiredColumns: ['location_code', 'location_name', 'district'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    // Get column indices
+
                     const columns = result.columns || [];
-                    const summaryIdx = columns.indexOf('summary');
-                    
-                    // Check that summary contains the code from case 1
-                    const code = caseSystem.carriedForwardData.code;
-                    if (!code) {
-                        console.warn('Case 2: No code found in carriedForwardData. Complete Case 1 first.');
-                        return false;
+                    const codeIdx = columns.indexOf('location_code');
+                    const nameIdx = columns.indexOf('location_name');
+
+                    const row = result.values[0];
+                    const code = String(codeIdx >= 0 ? row[codeIdx] : row[0] || '').toUpperCase();
+                    const name = String(nameIdx >= 0 ? row[nameIdx] : row[1] || '');
+
+                    if (code === 'B7' && name) {
+                        caseSystem.carriedForwardData.locationName = name;
+                        console.log('Case 2: Decoded B7 as location:', name);
+                        return true;
                     }
-                    
-                    // Verify code appears in at least one result's summary
-                    const hasCode = result.values.some(row => {
-                        const summary = summaryIdx >= 0 ? row[summaryIdx] : row[4];
-                        return summary && typeof summary === 'string' && summary.includes(code);
-                    });
-                    
-                    if (hasCode) {
-                        // Extract signature from results - look for BLACK_STAR in signature column
-                        const signatureIdx = columns.indexOf('signature');
-                        if (signatureIdx >= 0) {
-                            const blackStarCase = result.values.find(row => {
-                                const sig = row[signatureIdx];
-                                return sig && sig.includes('BLACK_STAR');
-                            });
-                            if (blackStarCase) {
-                                caseSystem.carriedForwardData.signature = 'BLACK_STAR';
-                                console.log('Case 2: Found BLACK_STAR signature pattern');
-                            }
-                        }
-                    }
-                    
-                    return hasCode;
+                    return false;
                 }
             }
         },
@@ -99,25 +75,37 @@ const caseSystem = {
             id: 3,
             title: "The Star Scratched Locker",
             story: "The Detective Boys are gathered at Teitan Elementary, their usual meeting spot transformed into an impromptu investigation headquarters. Ayumi points excitedly at a locker with a freshly scratched star symbol. Genta dismisses it as vandalism, but Mitsuhiko notices something odd—the scratches form a perfect five-pointed star. Haibara's usual composure cracks when Conan mentions a pattern he's discovered. 'That symbol...' she whispers. 'It's not random. It's a signature. The same one that's been appearing across the city.' The children fall silent. Their games have crossed into something dangerous.",
-            task: "Now that you've identified the BLACK_STAR signature pattern, query the case_files table to find all cases that bear this exact signature. This will show the full scope of the operative's activities. Include: case_id, case_title, signature, location, and severity columns.",
+            task: "Evidence is now unlocked. Using the decoded location from Case 2, find evidence linked to that location. Return: evidence_id, item, found_at, notes.",
             validation: {
-                requiredColumns: ['case_id', 'case_title', 'signature', 'location', 'severity'],
+                requiredColumns: ['evidence_id', 'item', 'found_at', 'notes'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    // Get column indices
+
                     const columns = result.columns || [];
-                    const signatureIdx = columns.indexOf('signature');
-                    
-                    // Check for BLACK_STAR signature (should have been discovered in Case 2)
-                    const expectedSignature = caseSystem.carriedForwardData.signature || 'BLACK_STAR';
-                    const hasSignature = result.values.some(row => {
-                        const signature = signatureIdx >= 0 ? row[signatureIdx] : row[2];
-                        return signature && signature.includes(expectedSignature);
+                    const foundIdx = columns.indexOf('found_at');
+                    const itemIdx = columns.indexOf('item');
+
+                    const locName = (caseSystem.carriedForwardData.locationName || '').toLowerCase();
+                    if (!locName) {
+                        console.warn('Case 3: Missing carriedForwardData.locationName. Complete Case 2 first.');
+                        return false;
+                    }
+
+                    const matchRow = result.values.find(row => {
+                        const found = String(foundIdx >= 0 ? row[foundIdx] : row[3] || '').toLowerCase();
+                        return found.includes('station') || (locName && found.includes(locName.split(' ')[0]));
                     });
-                    
-                    return hasSignature;
+
+                    if (matchRow) {
+                        const item = String(itemIdx >= 0 ? matchRow[itemIdx] : matchRow[2] || '');
+                        caseSystem.carriedForwardData.keyEvidenceItem = item;
+                        // Set the next clue consistently
+                        caseSystem.carriedForwardData.timeClue = '03:10';
+                        console.log('Case 3: Found station-linked evidence, carrying item + time clue 03:10:', item);
+                        return true;
+                    }
+                    return false;
                 }
             }
         },
@@ -125,34 +113,33 @@ const caseSystem = {
             id: 4,
             title: "The Station Umbrella Gambit",
             story: "Inspector Megure paces the MPD briefing room, his mustache twitching with frustration. 'Patterns mean paperwork,' he grumbles. Officer Takagi presents the latest incident: Beika Station's lost-and-found has been tampered with. Umbrellas that should be paired are now mismatched, and one contains a note with a star symbol. Sato watches Takagi with concern as he nearly spills his coffee. Conan, sitting quietly in the corner, focuses on what matters: among all the BLACK_STAR cases, which one poses the greatest threat? Megure would prioritize by severity. And that's exactly what Conan wants you to do.",
-            task: "With the BLACK_STAR signature confirmed, prioritize the threats. Query all cases with this signature, ordered by severity level (highest number first). The most severe case becomes your primary target. Display: case_id, case_title, severity, and location columns.",
+            task: "Time logs are now unlocked. Using the code and time clue you carried forward, find matching time_logs entries at the correct location around the key time. Return: timestamp, location_code, activity, person_name.",
             validation: {
-                requiredColumns: ['case_id', 'case_title', 'severity', 'location'],
+                requiredColumns: ['timestamp', 'location_code', 'activity', 'person_name'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    // Get column indices
+
                     const columns = result.columns || [];
-                    const caseIdIdx = columns.indexOf('case_id');
-                    const severityIdx = columns.indexOf('severity');
-                    
-                    // Check that results are ordered by severity DESC and store top case_id
-                    const firstRow = result.values[0];
-                    const caseId = caseIdIdx >= 0 ? firstRow[caseIdIdx] : firstRow[0];
-                    const severity = severityIdx >= 0 ? firstRow[severityIdx] : firstRow[2];
-                    
-                    if (caseId !== undefined && severity !== undefined) {
-                        caseSystem.carriedForwardData.targetCaseId = caseId;
-                        console.log('Case 4: Stored target case_id:', caseSystem.carriedForwardData.targetCaseId);
-                        
-                        // Verify ordering (first should be highest)
-                        if (result.values.length > 1) {
-                            const secondRow = result.values[1];
-                            const secondSeverity = severityIdx >= 0 ? secondRow[severityIdx] : secondRow[2];
-                            return severity >= secondSeverity;
+                    const tsIdx = columns.indexOf('timestamp');
+                    const locIdx = columns.indexOf('location_code');
+                    const personIdx = columns.indexOf('person_name');
+
+                    const timeClue = caseSystem.carriedForwardData.timeClue || '03:10';
+
+                    const matchRow = result.values.find(row => {
+                        const ts = String(tsIdx >= 0 ? row[tsIdx] : row[1] || '');
+                        const loc = String(locIdx >= 0 ? row[locIdx] : row[2] || '').toUpperCase();
+                        return ts.includes(timeClue) && loc === 'B7';
+                    });
+
+                    if (matchRow) {
+                        const person = String(personIdx >= 0 ? matchRow[personIdx] : matchRow[4] || '').trim();
+                        if (person) {
+                            caseSystem.carriedForwardData.personClue = person;
+                            console.log('Case 4: Carried person clue:', person);
+                            return true;
                         }
-                        return true;
                     }
                     return false;
                 }
@@ -162,42 +149,40 @@ const caseSystem = {
             id: 5,
             title: "The Evidence Vault",
             story: "With clearance granted for the highest-severity BLACK_STAR case, you gain access to the Metropolitan Police evidence locker. Sato hovers protectively as Takagi carefully lays out the evidence bags. Conan examines each item with forensic precision, looking for what criminals always leave behind: a timestamp that can't be faked, a moment in time that betrays their presence. He murmurs something significant, spotting a crucial detail in the evidence log. 'That's when they slipped up.' The evidence table is now unlocked—your analysis begins.",
-            task: "Access the newly unlocked evidence table and examine all items for the high-priority case_id you identified in Case 4. Look for temporal clues in the notes column that will reveal the operative's timeline. Include: evidence_id, item, found_at, time_found, notes, and is_key columns.",
-            unlockedTables: ['case_files', 'evidence'],
+            task: "Connections are now unlocked. Using the person_name you discovered in Case 4, query the connections table to find who they are linked to. Return: person_a, person_b, relationship.",
             validation: {
-                requiredColumns: ['evidence_id', 'item', 'found_at', 'time_found', 'notes', 'is_key'],
+                requiredColumns: ['person_a', 'person_b', 'relationship'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    const targetCaseId = caseSystem.carriedForwardData.targetCaseId;
-                    if (!targetCaseId) {
-                        console.warn('Case 5: No targetCaseId found. Complete Case 4 first.');
+
+                    const columns = result.columns || [];
+                    const aIdx = columns.indexOf('person_a');
+                    const bIdx = columns.indexOf('person_b');
+
+                    const person = caseSystem.carriedForwardData.personClue;
+                    if (!person) {
+                        console.warn('Case 5: Missing carriedForwardData.personClue. Complete Case 4 first.');
                         return false;
                     }
-                    
-                    // Get column indices
-                    const columns = result.columns || [];
-                    const notesIdx = columns.indexOf('notes');
-                    
-                    // Extract time from notes (e.g., 03:10) - MUST be in the query results
-                    const timeMatch = result.values.find(row => {
-                        const notes = notesIdx >= 0 ? row[notesIdx] : row[4];
-                        return notes && typeof notes === 'string' && /(\d{2}:\d{2})/.test(notes);
+
+                    const matchRow = result.values.find(row => {
+                        const a = String(aIdx >= 0 ? row[aIdx] : row[1] || '');
+                        const b = String(bIdx >= 0 ? row[bIdx] : row[2] || '');
+                        return a === person || b === person;
                     });
-                    
-                    if (timeMatch) {
-                        const notes = notesIdx >= 0 ? timeMatch[notesIdx] : timeMatch[4];
-                        const timeExtracted = notes.match(/(\d{2}:\d{2})/);
-                        if (timeExtracted) {
-                            caseSystem.carriedForwardData.time = timeExtracted[1];
-                            console.log('Case 5: Extracted time from evidence notes:', caseSystem.carriedForwardData.time);
+
+                    if (matchRow) {
+                        const a = String(aIdx >= 0 ? matchRow[aIdx] : matchRow[1] || '');
+                        const b = String(bIdx >= 0 ? matchRow[bIdx] : matchRow[2] || '');
+                        const other = (a === person) ? b : a;
+                        if (other) {
+                            caseSystem.carriedForwardData.connectedPerson = other;
+                            console.log('Case 5: Carried connected person:', other);
                             return true;
                         }
                     }
-                    
-                    console.warn('Case 5: No time found in evidence notes. Time must appear in query results.');
-                    return false; // Time must be in the results
+                    return false;
                 }
             }
         },
@@ -205,32 +190,38 @@ const caseSystem = {
             id: 6,
             title: "The Midnight Elevator",
             story: "Officer Takagi reviews the security footage with growing concern. An elevator in a supposedly empty building stops at an impossible hour—since the building should be locked. Conan's mind connects the dots instantly. The timestamp from the evidence vault isn't isolated. It's a pattern. Criminals try to hide in plain sight, but they can't hide their timeline. Every action leaves a digital footprint. The BLACK_STAR operative's movements are now traceable through this temporal signature. 'They were there,' Conan states flatly. 'At exactly that time.'",
-            task: "Using the timestamp you discovered in Case 5, search across all evidence items to find others that mention this exact time. This will reveal the operative's full timeline. Display: evidence_id, case_id, item, time_found, and notes columns.",
-            unlockedTables: ['case_files', 'evidence'],
+            task: "Suspects are now unlocked. Using the connected person you carried from Case 5, find their suspect entry. Return: case_id, name, suspicion.",
             validation: {
-                requiredColumns: ['evidence_id', 'case_id', 'item', 'time_found', 'notes'],
+                requiredColumns: ['case_id', 'name', 'suspicion'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    const time = caseSystem.carriedForwardData.time;
-                    if (!time) {
-                        console.warn('Case 6: No time found in carriedForwardData. Complete Case 5 first.');
+
+                    const columns = result.columns || [];
+                    const caseIdx = columns.indexOf('case_id');
+                    const nameIdx = columns.indexOf('name');
+
+                    const target = caseSystem.carriedForwardData.connectedPerson;
+                    if (!target) {
+                        console.warn('Case 6: Missing carriedForwardData.connectedPerson. Complete Case 5 first.');
                         return false;
                     }
-                    
-                    // Get column indices
-                    const columns = result.columns || [];
-                    const notesIdx = columns.indexOf('notes');
-                    const caseIdIdx = columns.indexOf('case_id');
-                    
-                    // Check that notes contain the time (from Case 5 results)
-                    const hasTime = result.values.some(row => {
-                        const notes = notesIdx >= 0 ? row[notesIdx] : row[4];
-                        return notes && typeof notes === 'string' && notes.includes(time);
+
+                    const matchRow = result.values.find(row => {
+                        const name = String(nameIdx >= 0 ? row[nameIdx] : row[2] || '');
+                        return name === target;
                     });
-                    
-                    return hasTime;
+
+                    if (matchRow) {
+                        const caseId = caseIdx >= 0 ? matchRow[caseIdx] : matchRow[1];
+                        const caseIdValue = typeof caseId === 'string' ? parseInt(caseId) : caseId;
+                        if (caseIdValue) {
+                            caseSystem.carriedForwardData.caseId = caseIdValue;
+                            console.log('Case 6: Carried case_id:', caseIdValue);
+                            return true;
+                        }
+                    }
+                    return false;
                 }
             }
         },
@@ -238,26 +229,44 @@ const caseSystem = {
             id: 7,
             title: "The Evidence Pattern",
             story: "Conan stands before the evidence board, marker in hand, but doesn't write yet. He counts silently. The Metropolitan Police calls this 'statistical analysis.' Conan calls it 'common sense.' The 03:10 timestamp appears across multiple cases—not randomly, but with purpose. If the same temporal clue appears repeatedly, it's not coincidence. Someone wants investigators to connect these dots. Or perhaps they're so arrogant they can't help leaving their signature everywhere. Either way, the case with the most 03:10 evidence items becomes the key to unraveling the entire BLACK_STAR operation.",
-            task: "Analyze the evidence items you found in Case 6 that share the 03:10 timestamp. Count how many such items exist for each case_id. The case with the highest count of time-linked evidence is your primary target. Return: case_id and COUNT(*) columns.",
-            unlockedTables: ['case_files', 'evidence'],
+            task: "Witness statements are now unlocked. Using the case_id you carried from Case 6, list witness statements for that case and include reliability. Return: statement_id, case_id, witness_name, reliability.",
             validation: {
-                requiredColumns: ['case_id'],
+                requiredColumns: ['statement_id', 'case_id', 'witness_name', 'reliability'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    // Get column indices
+
                     const columns = result.columns || [];
-                    const caseIdIdx = columns.indexOf('case_id');
-                    const countIdx = columns.findIndex(c => c.toLowerCase().includes('count'));
-                    
-                    // Store case_id with highest count (should be first if ordered DESC)
-                    const firstRow = result.values[0];
-                    const caseId = caseIdIdx >= 0 ? firstRow[caseIdIdx] : firstRow[0];
-                    
-                    if (caseId !== undefined) {
-                        caseSystem.carriedForwardData.keyCaseId = caseId;
-                        console.log('Case 7: Identified key case_id:', caseSystem.carriedForwardData.keyCaseId);
+                    const relIdx = columns.indexOf('reliability');
+                    const nameIdx = columns.indexOf('witness_name');
+                    const caseIdx = columns.indexOf('case_id');
+
+                    const caseId = caseSystem.carriedForwardData.caseId;
+                    if (!caseId) {
+                        console.warn('Case 7: Missing carriedForwardData.caseId. Complete Case 6 first.');
+                        return false;
+                    }
+
+                    const rowsForCase = result.values.filter(row => {
+                        const cid = caseIdx >= 0 ? row[caseIdx] : row[1];
+                        const cidValue = typeof cid === 'string' ? parseInt(cid) : cid;
+                        return cidValue === caseId;
+                    });
+
+                    if (rowsForCase.length === 0) return false;
+
+                    // pick highest reliability witness to carry
+                    let best = null;
+                    rowsForCase.forEach(r => {
+                        const rel = parseInt(relIdx >= 0 ? r[relIdx] : r[3] || 0);
+                        if (!best || rel > best.rel) {
+                            best = { rel, name: String(nameIdx >= 0 ? r[nameIdx] : r[2] || '') };
+                        }
+                    });
+
+                    if (best && best.name) {
+                        caseSystem.carriedForwardData.bestWitness = best.name;
+                        console.log('Case 7: Carried best witness:', best.name);
                         return true;
                     }
                     return false;
@@ -268,40 +277,28 @@ const caseSystem = {
             id: 8,
             title: "The Suspect Matrix",
             story: "Hattori Heiji bursts into the investigation room with his usual dramatic flair, immediately criticizing Kogoro's 'amateur detective style.' Sonoko enthusiastically suggests it's the work of Kaito Kid. Conan ignores both conversations entirely, his attention fixed on the suspect database that has just been unlocked. For the key case you identified—the one with the densest concentration of 03:10 evidence—the suspect board must be examined. Suspicion levels, alibis, connections—all must be analyzed systematically. The BLACK_STAR operative is on this list. And now you have the clearance to find them.",
-            task: "Access the newly unlocked suspects table for the key case_id you identified in Case 7. List all suspects ordered by suspicion level (highest first). The primary suspect will be crucial for the final confrontation. Include: name, connection, alibi, suspicion, and motive_hint columns.",
-            unlockedTables: ['case_files', 'evidence', 'suspects'],
+            task: "Using your carried case_id, JOIN case_files and suspects to return: case_title, name, suspicion (order by suspicion DESC).",
             validation: {
-                requiredColumns: ['name', 'connection', 'alibi', 'suspicion', 'motive_hint'],
+                requiredColumns: ['case_title', 'name', 'suspicion'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    const keyCaseId = caseSystem.carriedForwardData.keyCaseId;
-                    if (!keyCaseId) {
-                        console.warn('Case 8: No keyCaseId found. Complete Case 7 first.');
-                        return false;
-                    }
-                    
-                    // Get column indices
-                    const columns = result.columns || [];
-                    const nameIdx = columns.indexOf('name');
-                    const suspicionIdx = columns.indexOf('suspicion');
-                    
-                    // Check ordering by suspicion DESC and store top suspect
-                    const firstRow = result.values[0];
-                    const name = nameIdx >= 0 ? firstRow[nameIdx] : firstRow[0];
-                    const suspicion = suspicionIdx >= 0 ? firstRow[suspicionIdx] : firstRow[3];
-                    
-                    if (name && suspicion !== undefined) {
+                    const cols = result.columns || [];
+                    const titleIdx = cols.indexOf('case_title');
+                    const nameIdx = cols.indexOf('name');
+                    const suspIdx = cols.indexOf('suspicion');
+
+                    const caseId = caseSystem.carriedForwardData.caseId;
+                    if (!caseId) return false;
+
+                    // Just ensure we got at least one suspect row with a title
+                    const row = result.values[0];
+                    const title = String(titleIdx >= 0 ? row[titleIdx] : row[0] || '');
+                    const name = String(nameIdx >= 0 ? row[nameIdx] : row[1] || '');
+                    const susp = parseInt(suspIdx >= 0 ? row[suspIdx] : row[2] || 0);
+
+                    if (title && name && !isNaN(susp)) {
                         caseSystem.carriedForwardData.topSuspect = name;
-                        console.log('Case 8: Identified top suspect:', caseSystem.carriedForwardData.topSuspect);
-                        
-                        // Verify ordering (first should be highest)
-                        if (result.values.length > 1) {
-                            const secondRow = result.values[1];
-                            const secondSuspicion = suspicionIdx >= 0 ? secondRow[suspicionIdx] : secondRow[3];
-                            return suspicion >= secondSuspicion;
-                        }
                         return true;
                     }
                     return false;
@@ -312,34 +309,25 @@ const caseSystem = {
             id: 9,
             title: "The Witness Network",
             story: "Inspector Megure leans heavily on his desk, the weight of the investigation pressing down. 'This is getting too big for the usual channels,' he admits. The witness statements database has been unlocked, but raw testimony without context is chaos. Criminals thrive in chaos. Conan knows this better than anyone. The key case you've been tracking has witnesses—people who saw something, heard something, know something. But their statements are scattered across the database. You need to connect them to the case context. JOIN the tables. Cross-reference the testimony. Find the reliable witnesses whose statements can be trusted. They're the final pieces of the BLACK_STAR puzzle.",
-            task: "With witness statements now accessible, perform your first JOIN operation. Connect the case_files and witness_statements tables for your key case_id from Case 7. Display case title, witness name, reliability rating, and statement content. Sort by reliability (highest first) to prioritize trustworthy testimony. Return: case_title, witness_name, reliability, and statement columns.",
-            unlockedTables: ['case_files', 'evidence', 'suspects', 'witness_statements'],
+            task: "Using your carried case_id and/or the key evidence clue you carried earlier, list evidence for the case. Return: item, time_found, notes.",
             validation: {
-                requiredColumns: ['case_title', 'witness_name', 'reliability', 'statement'],
+                requiredColumns: ['item', 'time_found', 'notes'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    const keyCaseId = caseSystem.carriedForwardData.keyCaseId;
-                    if (!keyCaseId) {
-                        console.warn('Case 9: No keyCaseId found. Complete Case 7 first.');
-                        return false;
-                    }
-                    
-                    // Get column indices
-                    const columns = result.columns || [];
-                    const reliabilityIdx = columns.indexOf('reliability');
-                    
-                    // Check that we have joined data (case_title from case_files, witness_name from witness_statements)
-                    const firstRow = result.values[0];
-                    
-                    // Check ordering by reliability DESC
-                    if (result.values.length > 1 && reliabilityIdx >= 0) {
-                        const firstReliability = firstRow[reliabilityIdx];
-                        const secondReliability = result.values[1][reliabilityIdx];
-                        return firstReliability >= secondReliability;
-                    }
-                    return true;
+                    const cols = result.columns || [];
+                    const itemIdx = cols.indexOf('item');
+                    const notesIdx = cols.indexOf('notes');
+
+                    const keyItem = (caseSystem.carriedForwardData.keyEvidenceItem || '').toLowerCase();
+                    if (!keyItem) return false;
+
+                    const hasKey = result.values.some(row => {
+                        const item = String(itemIdx >= 0 ? row[itemIdx] : row[0] || '').toLowerCase();
+                        const notes = String(notesIdx >= 0 ? row[notesIdx] : row[2] || '').toLowerCase();
+                        return item.includes(keyItem) || notes.includes('b7');
+                    });
+                    return hasKey;
                 }
             }
         },
@@ -347,40 +335,25 @@ const caseSystem = {
             id: 10,
             title: "The Black Star Falls",
             story: "The investigation room falls silent as all eyes turn to Conan. This is the moment he's waited for—the 'explains it all' revelation that ties every thread together. The key case from your analysis, the prime suspect you've identified, the crucial evidence items, the reliable witness testimony—all must be woven into a single, undeniable narrative. Megure needs more than theories; he needs proof. A single query that JOINs all the evidence, all the suspects, all the witnesses. One master table that exposes the BLACK_STAR operative's entire operation. Heiji smirks knowingly. This is the part that separates the amateurs from the masters.",
-            task: "Execute the final revelation: JOIN all four tables (case_files, evidence, suspects, witness_statements) for your key case_id. Include the case title, prime suspect details, key evidence items (is_key = 1), and reliable witness statements (reliability >= 4). This comprehensive JOIN will expose the complete BLACK_STAR operation. Return: case_title, suspect_name, suspicion, evidence_item, evidence_notes, witness_name, and reliability columns.",
-            unlockedTables: ['case_files', 'evidence', 'suspects', 'witness_statements'],
+            task: "Final report: produce a single-row summary with aliases: case_title, lead_detective, location_name, top_suspect, best_witness.",
             validation: {
-                requiredColumns: ['case_title'],
+                requiredColumns: ['case_title', 'lead_detective', 'location_name', 'top_suspect', 'best_witness'],
                 requiredRows: 1,
                 checkQuery: (result) => {
                     if (!result || !result.values || result.values.length === 0) return false;
-                    
-                    const keyCaseId = caseSystem.carriedForwardData.keyCaseId;
-                    const topSuspect = caseSystem.carriedForwardData.topSuspect;
-                    
-                    if (!keyCaseId) {
-                        console.warn('Case 10: No keyCaseId found. Complete previous cases first.');
-                        return false;
-                    }
-                    
-                    // Final case - check that we have joined multiple tables
-                    // Should have case_title, suspect_name, evidence_item, witness_name
-                    const firstRow = result.values[0];
-                    const columns = result.columns || [];
-                    
-                    // Verify we have data from multiple tables
-                    const hasCaseTitle = columns.includes('case_title');
-                    const hasSuspect = columns.includes('suspect_name');
-                    const hasEvidence = columns.includes('evidence_item') || columns.includes('evidence_notes');
-                    const hasWitness = columns.includes('witness_name');
-                    
-                    // Should have at least case_title and one other table's data
-                    const tableCount = [hasCaseTitle, hasSuspect, hasEvidence, hasWitness].filter(Boolean).length;
-                    return tableCount >= 2 && firstRow.length >= 2;
+                    const cols = result.columns || [];
+
+                    const needed = ['case_title', 'lead_detective', 'location_name', 'top_suspect', 'best_witness'];
+                    const hasAll = needed.every(c => cols.includes(c));
+                    if (!hasAll) return false;
+
+                    // No strict content check; just require a coherent "report" row.
+                    return true;
                 }
             }
         }
-    ],
+    ]
+,
     
     getCurrentCase() {
         if (this.currentCaseIndex >= this.cases.length) {
@@ -459,28 +432,36 @@ const caseSystem = {
     },
     
     getUnlockedTables() {
-        // Progressive unlocking based on investigation progress
+        // Progressive unlocking: each completed case unlocks the next table
         const unlocked = ['case_files']; // Always available
 
-        // Unlock locations after Case 1 (when we understand the scope)
+        // Case 1 complete -> unlock locations
         if (this.completedCases.has(1) || this.currentCaseIndex >= 1) {
             unlocked.push('locations');
         }
 
-        // Unlock evidence and time_logs after Case 4 (The Station Umbrella Gambit)
-        if (this.completedCases.has(4) || this.currentCaseIndex >= 4) {
+        // Case 2 complete -> unlock evidence
+        if (this.completedCases.has(2) || this.currentCaseIndex >= 2) {
             unlocked.push('evidence');
+        }
+
+        // Case 3 complete -> unlock time_logs
+        if (this.completedCases.has(3) || this.currentCaseIndex >= 3) {
             unlocked.push('time_logs');
         }
 
-        // Unlock suspects and connections after Case 7 (The Evidence Pattern)
-        if (this.completedCases.has(7) || this.currentCaseIndex >= 7) {
-            unlocked.push('suspects');
+        // Case 4 complete -> unlock connections
+        if (this.completedCases.has(4) || this.currentCaseIndex >= 4) {
             unlocked.push('connections');
         }
 
-        // Unlock witness_statements after Case 8 (The Suspect Matrix)
-        if (this.completedCases.has(8) || this.currentCaseIndex >= 8) {
+        // Case 5 complete -> unlock suspects
+        if (this.completedCases.has(5) || this.currentCaseIndex >= 5) {
+            unlocked.push('suspects');
+        }
+
+        // Case 6 complete -> unlock witness_statements
+        if (this.completedCases.has(6) || this.currentCaseIndex >= 6) {
             unlocked.push('witness_statements');
         }
 

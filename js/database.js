@@ -193,6 +193,8 @@ function populateData() {
         [3004, 3, "Unknown older student", "Visitor", "Seen near lockers; left before staff questioned them.", 4, "Star scratch seems deliberate, not childish."],
         [4001, 4, "Inspector Megure", "MPD", "Arrived after the umbrella mix-up.", 1, "Wants it quiet; not a suspect."],
         [4002, 4, "Unknown commuter", "Crowd", "No ID; CCTV gap covers their presence.", 5, "CCTV gap + hidden note suggests planning."],
+        [4010, 4, "Beika Station Attendant", "Staff", "Was on duty during the CCTV outage window.", 4, "Knows station systems and access."],
+
         [5001, 5, "Sonoko Suzuki", "Target", "Was with Ran when the flyer was found.", 1, "Victim of scam."],
         [5002, 5, "Gallery temp staff", "Staff", "Handled flyers at entrance.", 3, "Could have planted fakes."],
         [5003, 5, "Kiosk clerk (Beika Station)", "Vendor", "Says envelopes sold normally.", 2, "Link to envelope trail."],
@@ -233,7 +235,8 @@ function populateData() {
         ['MDA', 'Mouri Detective Agency', 'Beika', '35.6812,139.7671', 'The famous detective agency run by Kogoro Mouri, located in central Beika'],
         ['POIROT', 'Cafe Poirot', 'Beika', '35.6815,139.7674', 'Upscale coffee shop frequented by detectives and known for excellent coffee'],
         ['TEITAN', 'Teitan Elementary School', 'Beika', '35.6821,139.7668', 'School where the Detective Boys often meet and investigate'],
-        ['BEIKA_ST', 'Beika Station', 'Beika', '35.6804,139.7677', 'Major transportation hub with lost-and-found office'],
+        ['B7', 'Beika Station', 'Beika', '35.6804,139.7677', 'Major transportation hub with lost-and-found office (internal code B7)'],
+        ['BEIKA_ST', 'Beika Station (legacy code)', 'Beika', '35.6804,139.7677', 'Legacy location code kept for backwards compatibility'],
         ['BOT', 'Beika Office Tower', 'Beika', '35.6832,139.7681', 'Modern office building with restricted access floors'],
         ['SUZUKI_G', 'Suzuki Gallery', 'Beika', '35.6798,139.7684', 'Art gallery owned by the wealthy Suzuki family'],
         ['CLOCK_SHOP', 'Beika Clock Shop', 'Beika', '35.6818,139.7673', 'Specialty shop dealing in watches and timepieces'],
@@ -249,10 +252,10 @@ function populateData() {
         [1, '2026-01-10 08:30:00', 'MDA', 'Receipt taken', 'Unknown', 'Desk blotter shows B7 code', 1],
         [2, '2026-01-11 15:45:00', 'POIROT', 'Sugar jar swapped', 'Unknown', 'Customer complained about salty taste', 2],
         [3, '2026-01-12 16:20:00', 'TEITAN', 'Locker scratched', 'Unknown', 'Star shape with black sticker', 3],
-        [4, '2026-01-13 18:15:00', 'BEIKA_ST', 'Umbrellas mixed', 'Unknown', 'Lost-and-found tampering detected', 4],
+        [4, '2026-01-13 18:15:00', 'B7', 'Umbrellas mixed', 'Unknown Courier', 'Lost-and-found tampering detected', 4],
         [5, '2026-01-14 14:30:00', 'SUZUKI_G', 'Fake invite sent', 'Unknown', 'QR code leads to scam site', 5],
         [6, '2026-01-15 03:10:00', 'BOT', 'Elevator activated', 'Unknown', 'Locked floor access logged', 6],
-        [7, '2026-01-16 03:10:00', 'BEIKA_ST', 'CCTV disabled', 'Unknown', 'Maintenance period suspiciously timed', 4],
+        [7, '2026-01-16 03:10:00', 'B7', 'CCTV disabled', 'Unknown Courier', 'Maintenance period suspiciously timed', 4],
         [8, '2026-01-17 03:10:00', 'CLOCK_SHOP', 'Parcel delivered', 'Courier', 'Package labelled B7 Supplies', 8],
         [9, '2026-01-18 03:10:00', 'MDA', 'Agency visited', 'Unknown', 'Footprints match station pattern', 1]
     ];

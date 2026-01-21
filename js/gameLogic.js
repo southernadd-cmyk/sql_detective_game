@@ -87,31 +87,94 @@ function checkForClues(query, result) {
 
 // Simple query similarity check
 function isQuerySimilar(query1, query2) {
-    // Extract key parts (SELECT, FROM, WHERE, etc.)
-    const extractKeyParts = (q) => {
-        const parts = {
-            select: q.match(/select\s+([^from]+)/i)?.[1] || '',
-            from: q.match(/from\s+(\w+)/i)?.[1] || '',
-            where: q.match(/where\s+(.+?)(?:\s+order|\s+group|;|$)/i)?.[1] || '',
-            order: q.match(/order\s+by\s+([^;]+)/i)?.[1] || ''
+    const normalizeSql = (q) => q.toLowerCase().replace(/\s+/g, ' ').trim();
+    const normalizedQuery = normalizeSql(query1);
+    const normalizedClue = normalizeSql(query2);
+
+    const extractQueryParts = (q) => {
+        return {
+            select: q.match(/select\s+(.+?)\s+from\s+/i)?.[1] || '',
+            from: q.match(/from\s+([a-z_][\w]*)/i)?.[1] || '',
+            joins: Array.from(q.matchAll(/join\s+([a-z_][\w]*)/gi)).map(match => match[1]),
+            where: q.match(/where\s+(.+?)(?:\s+group|\s+order|\s+limit|;|$)/i)?.[1] || '',
+            groupBy: q.match(/group\s+by\s+(.+?)(?:\s+order|\s+limit|;|$)/i)?.[1] || '',
+            orderBy: q.match(/order\s+by\s+(.+?)(?:\s+limit|;|$)/i)?.[1] || ''
         };
-        return parts;
     };
-    
-    const parts1 = extractKeyParts(query1);
-    const parts2 = extractKeyParts(query2);
-    
-    // Check if FROM matches (most important)
-    if (parts1.from && parts2.from && parts1.from === parts2.from) {
-        // Check if SELECT columns match (simplified)
-        if (parts1.select.includes('*') || parts2.select.includes('*')) {
-            return true;
-        }
-        // More sophisticated matching could go here
-        return true;
+
+    const normalizeColumn = (col) => col.replace(/[`"'"]/g, '').trim().toLowerCase();
+    const getBaseColumn = (col) => {
+        const parts = normalizeColumn(col).split('.');
+        return parts[parts.length - 1];
+    };
+
+    const parseSelectColumns = (selectPart) => {
+        if (!selectPart) return [];
+        return selectPart.split(',').map(part => {
+            const trimmed = part.trim();
+            const withoutAlias = trimmed.split(/\s+as\s+/i)[0].trim();
+            return withoutAlias;
+        });
+    };
+
+    const extractColumnRefs = (clause) => {
+        if (!clause) return [];
+        const keywords = new Set([
+            'select', 'from', 'where', 'join', 'on', 'and', 'or', 'group', 'by',
+            'order', 'limit', 'asc', 'desc', 'inner', 'left', 'right', 'outer',
+            'is', 'null', 'like', 'in', 'between', 'distinct', 'count', 'sum',
+            'avg', 'min', 'max'
+        ]);
+        const matches = clause.match(/[a-z_][\w]*(?:\.[a-z_][\w]*)?/gi) || [];
+        return matches.filter(token => !keywords.has(token));
+    };
+
+    const clauseHasRequiredColumns = (queryClause, clueClause) => {
+        if (!clueClause) return true;
+        if (!queryClause) return false;
+        const queryCols = extractColumnRefs(queryClause).map(getBaseColumn);
+        const clueCols = extractColumnRefs(clueClause).map(getBaseColumn);
+        return clueCols.every(col => queryCols.includes(col));
+    };
+
+    const queryParts = extractQueryParts(normalizedQuery);
+    const clueParts = extractQueryParts(normalizedClue);
+
+    if (!queryParts.from || !clueParts.from || queryParts.from !== clueParts.from) {
+        return false;
     }
-    
-    return false;
+
+    const queryJoins = new Set(queryParts.joins);
+    const clueJoins = new Set(clueParts.joins);
+    for (const joinTable of clueJoins) {
+        if (!queryJoins.has(joinTable)) {
+            return false;
+        }
+    }
+
+    const querySelectCols = parseSelectColumns(queryParts.select);
+    const clueSelectCols = parseSelectColumns(clueParts.select);
+    const queryHasStar = querySelectCols.some(col => normalizeColumn(col) === '*');
+    if (!queryHasStar && clueSelectCols.length > 0) {
+        const queryBaseCols = querySelectCols.map(getBaseColumn);
+        const clueBaseCols = clueSelectCols.map(getBaseColumn);
+        const selectsMatch = clueBaseCols.every(col => queryBaseCols.includes(col));
+        if (!selectsMatch) {
+            return false;
+        }
+    }
+
+    if (!clauseHasRequiredColumns(queryParts.where, clueParts.where)) {
+        return false;
+    }
+    if (!clauseHasRequiredColumns(queryParts.groupBy, clueParts.groupBy)) {
+        return false;
+    }
+    if (!clauseHasRequiredColumns(queryParts.orderBy, clueParts.orderBy)) {
+        return false;
+    }
+
+    return true;
 }
 
 // Discover a clue

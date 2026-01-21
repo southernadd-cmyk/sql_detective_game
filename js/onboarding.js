@@ -18,6 +18,8 @@ const onboarding = {
     step3Triggered: false,
     step5Triggered: false,
     listenersAttached: false, // Prevent step 3 from triggering multiple times
+    _conditionObserversActive: false,
+    _executionObserversActive: false,
     
     // Detective Conan style messages for each step
     messages: [
@@ -164,7 +166,11 @@ const onboarding = {
         this.isActive = true;
         this.createToastContainer();
         console.log('[Onboarding] About to call setupEventListeners');
-        this.setupEventListeners();
+        if (!this.listenersAttached) {
+            this.setupEventListeners();
+        } else {
+            console.log('[Onboarding] Event listeners already attached, skipping setup');
+        }
         console.log('[Onboarding] setupEventListeners completed');
         
         // Start with step 1 if requested (and after a short delay to ensure DOM is ready)
@@ -502,6 +508,16 @@ const onboarding = {
         this.completedSteps.add(stepNumber);
         this.currentStep = stepNumber;
 
+        if (stepNumber === 6 && this._setupConditionObservers) {
+            this._setupConditionObservers();
+            this._setupConditionObservers = null;
+        }
+
+        if (stepNumber === 8 && this._setupExecutionObservers) {
+            this._setupExecutionObservers();
+            this._setupExecutionObservers = null;
+        }
+
         // Remove current toast
         this.removeCurrentToast();
 
@@ -574,10 +590,10 @@ const onboarding = {
     
     // Setup event listeners to detect user actions
     setupEventListeners() {
-        if (window.__onboardingListenersAttached) {
+        if (this.listenersAttached) {
             return;
         }
-        window.__onboardingListenersAttached = true;
+        this.listenersAttached = true;
         console.log('[Onboarding] Setting up event listeners at step:', this.currentStep);
         // Step 1: No UI trigger - will be advanced by "Got it" button
         // Removed timer-based detection - user clicks "Got it" to proceed
@@ -796,7 +812,12 @@ const onboarding = {
 
         document.addEventListener('click', buttonHandler);
         
-        // Step 7: Wait for condition item to actually appear in DOM
+        const setupConditionObservers = () => {
+            if (this._conditionObserversActive) {
+                return;
+            }
+            this._conditionObserversActive = true;
+            // Step 7: Wait for condition item to actually appear in DOM
         const checkConditionAdded = () => {
             console.log('[Onboarding] checkConditionAdded called, currentStep:', this.currentStep);
             if (this.currentStep === 6 || this.currentStep === 7) {
@@ -1013,7 +1034,20 @@ const onboarding = {
                 clearInterval(step8CheckInterval);
             }
         }, 1000); // Check every second
-        
+        };
+
+        if (this.currentStep >= 6) {
+            setupConditionObservers();
+        } else {
+            this._setupConditionObservers = setupConditionObservers;
+        }
+
+        const setupExecutionObservers = () => {
+            if (this._executionObserversActive) {
+                return;
+            }
+            this._executionObserversActive = true;
+
         // Get results container element (declare once in outer scope)
         const resultsContainer = document.getElementById('results-container');
         
@@ -1082,6 +1116,13 @@ const onboarding = {
                 attributes: true, 
                 attributeFilter: ['class'] 
             });
+        }
+        };
+
+        if (this.currentStep >= 8) {
+            setupExecutionObservers();
+        } else {
+            this._setupExecutionObservers = setupExecutionObservers;
         }
     }
 };

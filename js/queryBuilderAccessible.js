@@ -689,15 +689,10 @@ function addAllColumnsFromTable(tableName) {
         updateAvailableColumnsForSelectedTables();
     }
     
-    // Get all columns for this table
-    const tables = {
-        'case_files': ['case_id', 'case_title', 'date', 'location', 'lead_detective', 'case_type', 'severity', 'status', 'signature', 'summary'],
-        'evidence': ['evidence_id', 'case_id', 'item', 'found_at', 'time_found', 'notes', 'is_key'],
-        'suspects': ['suspect_id', 'case_id', 'name', 'connection', 'alibi', 'suspicion', 'motive_hint'],
-        'witness_statements': ['statement_id', 'case_id', 'witness_name', 'reliability', 'statement']
-    };
-    
-    const columns = tables[tableName] || [];
+    // Get all columns for this table from shared schema
+    const schemaTables = (typeof window !== 'undefined' && window.SCHEMA_TABLES) ? window.SCHEMA_TABLES : [];
+    const schemaTable = schemaTables.find(table => table.name === tableName);
+    const columns = schemaTable ? schemaTable.columns.map(column => column.name) : [];
     
     // We're already on step 1 (columns), so just add all columns directly
     columns.forEach(col => {
@@ -861,12 +856,7 @@ function addCondition(panel) {
     });
     
     // Populate columns from selected table
-    const tables = {
-        'case_files': ['case_id', 'case_title', 'date', 'location', 'lead_detective', 'case_type', 'severity', 'status', 'signature', 'summary'],
-        'evidence': ['evidence_id', 'case_id', 'item', 'found_at', 'time_found', 'notes', 'is_key'], // is_key is a boolean flag (1=yes, 0=no)
-        'suspects': ['suspect_id', 'case_id', 'name', 'connection', 'alibi', 'suspicion', 'motive_hint'],
-        'witness_statements': ['statement_id', 'case_id', 'witness_name', 'reliability', 'statement']
-    };
+    const schemaTables = (typeof window !== 'undefined' && window.SCHEMA_TABLES) ? window.SCHEMA_TABLES : [];
     
     // Get columns from all selected tables (or use case_files as default)
     const selectedTableNames = accessibleQueryBuilder.selectedTables.length > 0 
@@ -881,7 +871,8 @@ function addCondition(panel) {
     
     // Add columns from all selected tables
     selectedTableNames.forEach(tableName => {
-        const columns = tables[tableName] || [];
+        const schemaTable = schemaTables.find(table => table.name === tableName);
+        const columns = schemaTable ? schemaTable.columns.map(column => column.name) : [];
         columns.forEach(col => {
             const option = document.createElement('option');
             option.value = `${tableName}.${col}`;
@@ -1061,14 +1052,16 @@ function generateSQL() {
         sqlParts.from = accessibleQueryBuilder.selectedTables[0];
     } else {
         // Multiple tables - use known relationships where possible
-        const joinDefinitions = [
-            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'evidence', column: 'case_id' } },
-            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'suspects', column: 'case_id' } },
-            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'witness_statements', column: 'case_id' } },
-            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'time_logs', column: 'case_id' } },
-            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'connections', column: 'case_id' } },
-            { left: { table: 'time_logs', column: 'location_code' }, right: { table: 'locations', column: 'location_code' } }
-        ];
+        const joinDefinitions = (typeof window !== 'undefined' && window.SCHEMA_RELATIONSHIPS)
+            ? window.SCHEMA_RELATIONSHIPS
+            : [
+                { left: { table: 'case_files', column: 'case_id' }, right: { table: 'evidence', column: 'case_id' } },
+                { left: { table: 'case_files', column: 'case_id' }, right: { table: 'suspects', column: 'case_id' } },
+                { left: { table: 'case_files', column: 'case_id' }, right: { table: 'witness_statements', column: 'case_id' } },
+                { left: { table: 'case_files', column: 'case_id' }, right: { table: 'time_logs', column: 'case_id' } },
+                { left: { table: 'case_files', column: 'case_id' }, right: { table: 'connections', column: 'case_id' } },
+                { left: { table: 'time_logs', column: 'location_code' }, right: { table: 'locations', column: 'location_code' } }
+            ];
 
         const joinForTables = (joinedTable, targetTable) => {
             for (const def of joinDefinitions) {
@@ -1110,9 +1103,15 @@ function generateSQL() {
             }
         }
 
-        remainingTables.forEach(tableName => {
-            fromClause += `\nCROSS JOIN ${tableName}`;
-        });
+        if (remainingTables.length > 0) {
+            const missing = remainingTables.join(', ');
+            const message = `Query builder could not infer joins for: ${missing}. Add joins manually in Raw SQL if needed.`;
+            if (window.toast) {
+                window.toast.warning(message, 5000);
+            } else {
+                console.warn(message);
+            }
+        }
 
         sqlParts.from = fromClause;
     }

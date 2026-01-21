@@ -194,100 +194,13 @@ function showSchemaModal() {
     openModal('schema-modal');
 }
 
+const schemaTables = (typeof window !== 'undefined' && window.SCHEMA_TABLES)
+    ? window.SCHEMA_TABLES
+    : [];
+
 // Generate schema HTML
 function generateSchemaHTML() {
-    const tables = [
-        {
-            name: 'case_files',
-            description: 'Case file records - main case information',
-            columns: [
-                { name: 'case_id', type: 'INTEGER', description: 'Primary key' },
-                { name: 'case_title', type: 'TEXT', description: 'Title of the case' },
-                { name: 'date', type: 'TEXT', description: 'Date of the case' },
-                { name: 'location', type: 'TEXT', description: 'Location where case occurred' },
-                { name: 'lead_detective', type: 'TEXT', description: 'Detective in charge' },
-                { name: 'case_type', type: 'TEXT', description: 'Type of case' },
-                { name: 'severity', type: 'INTEGER', description: 'Severity level (1-5)' },
-                { name: 'status', type: 'TEXT', description: 'Case status' },
-                { name: 'signature', type: 'TEXT', description: 'Signature mark on case' },
-                { name: 'summary', type: 'TEXT', description: 'Case summary' }
-            ]
-        },
-        {
-            name: 'evidence',
-            description: 'Physical evidence collected',
-            columns: [
-                { name: 'evidence_id', type: 'INTEGER', description: 'Primary key' },
-                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' },
-                { name: 'item', type: 'TEXT', description: 'Evidence item name' },
-                { name: 'found_at', type: 'TEXT', description: 'Where it was found' },
-                { name: 'time_found', type: 'TEXT', description: 'Time when found' },
-                { name: 'notes', type: 'TEXT', description: 'Additional notes' },
-                { name: 'is_key', type: 'INTEGER', description: 'Is this key evidence? (1=yes, 0=no)' }
-            ]
-        },
-        {
-            name: 'suspects',
-            description: 'People of interest in the case',
-            columns: [
-                { name: 'suspect_id', type: 'INTEGER', description: 'Primary key' },
-                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' },
-                { name: 'name', type: 'TEXT', description: 'Suspect name' },
-                { name: 'connection', type: 'TEXT', description: 'Connection to case' },
-                { name: 'alibi', type: 'TEXT', description: 'Claimed alibi' },
-                { name: 'suspicion', type: 'INTEGER', description: 'Suspicion level (1-5)' },
-                { name: 'motive_hint', type: 'TEXT', description: 'Possible motive' }
-            ]
-        },
-        {
-            name: 'witness_statements',
-            description: 'Witness statements for cases',
-            columns: [
-                { name: 'statement_id', type: 'INTEGER', description: 'Primary key' },
-                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' },
-                { name: 'witness_name', type: 'TEXT', description: 'Witness name' },
-                { name: 'reliability', type: 'INTEGER', description: 'Reliability rating (1-5)' },
-                { name: 'statement', type: 'TEXT', description: 'What the witness said' }
-            ]
-        },
-        {
-            name: 'locations',
-            description: 'Location reference data',
-            columns: [
-                { name: 'location_code', type: 'TEXT', description: 'Primary key' },
-                { name: 'location_name', type: 'TEXT', description: 'Location name' },
-                { name: 'district', type: 'TEXT', description: 'District' },
-                { name: 'coordinates', type: 'TEXT', description: 'Latitude/longitude string' },
-                { name: 'description', type: 'TEXT', description: 'Location details' }
-            ]
-        },
-        {
-            name: 'time_logs',
-            description: 'Activity timestamps and movements',
-            columns: [
-                { name: 'log_id', type: 'INTEGER', description: 'Primary key' },
-                { name: 'timestamp', type: 'TEXT', description: 'Timestamp' },
-                { name: 'location_code', type: 'TEXT', description: 'Foreign key to locations' },
-                { name: 'activity', type: 'TEXT', description: 'Activity description' },
-                { name: 'person_name', type: 'TEXT', description: 'Person involved' },
-                { name: 'notes', type: 'TEXT', description: 'Additional notes' },
-                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' }
-            ]
-        },
-        {
-            name: 'connections',
-            description: 'Relationships between people and cases',
-            columns: [
-                { name: 'connection_id', type: 'INTEGER', description: 'Primary key' },
-                { name: 'person_a', type: 'TEXT', description: 'First person' },
-                { name: 'person_b', type: 'TEXT', description: 'Second person' },
-                { name: 'relationship', type: 'TEXT', description: 'Relationship type' },
-                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' },
-                { name: 'strength', type: 'INTEGER', description: 'Relationship strength (1-5)' },
-                { name: 'notes', type: 'TEXT', description: 'Additional notes' }
-            ]
-        }
-    ];
+    const tables = schemaTables;
     
     let html = '';
     tables.forEach(table => {
@@ -304,13 +217,16 @@ function generateSchemaHTML() {
                         </tr>
                     </thead>
                     <tbody>
-                        ${table.columns.map(col => `
+                        ${table.columns.map(col => {
+                            const desc = col.description ? col.description : '';
+                            return `
                             <tr>
                                 <td style="padding: 8px; font-family: monospace; color: var(--secondary-color);">${col.name}</td>
                                 <td style="padding: 8px; color: var(--text-muted);">${col.type}</td>
-                                <td style="padding: 8px;">${col.description}</td>
+                                <td style="padding: 8px;">${desc}</td>
                             </tr>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             </div>
@@ -370,15 +286,11 @@ function renderTables() {
     const tableList = tableLists[0];
     
     // Get all available tables with their schemas
-    const allTables = [
-        { name: 'case_files', description: 'Case file records', columns: ['case_id', 'case_title', 'date', 'location', 'lead_detective', 'case_type', 'severity', 'status', 'signature', 'summary'] },
-        { name: 'evidence', description: 'Physical evidence', columns: ['evidence_id', 'case_id', 'item', 'found_at', 'time_found', 'notes', 'is_key'] },
-        { name: 'suspects', description: 'People of interest', columns: ['suspect_id', 'case_id', 'name', 'connection', 'alibi', 'suspicion', 'motive_hint'] },
-        { name: 'witness_statements', description: 'Witness statements', columns: ['statement_id', 'case_id', 'witness_name', 'reliability', 'statement'] },
-        { name: 'locations', description: 'Location coordinates', columns: ['location_code', 'location_name', 'district', 'coordinates', 'description'] },
-        { name: 'time_logs', description: 'Activity timestamps', columns: ['log_id', 'timestamp', 'location_code', 'activity', 'person_name', 'notes', 'case_id'] },
-        { name: 'connections', description: 'Person relationships', columns: ['connection_id', 'person_a', 'person_b', 'relationship', 'case_id', 'strength', 'notes'] }
-    ];
+    const allTables = schemaTables.map(table => ({
+        name: table.name,
+        description: table.description,
+        columns: table.columns.map(column => column.name)
+    }));
 
     // Filter to only show unlocked tables based on current case progress
     // Default to case_files only if case system isn't ready yet
@@ -645,6 +557,15 @@ function displayResults(query, result) {
                     // Show validation error (but don't log "already completed" as an error)
                     if (validation.message !== 'Case already completed') {
                         console.log('Case validation failed:', validation.message);
+                        const requiredColumns = currentCase.validation?.requiredColumns || [];
+                        const resultColumns = resultSet.columns || [];
+                        const missingColumns = requiredColumns.filter(col => !resultColumns.includes(col));
+                        if (window.toast) {
+                            const missingHint = missingColumns.length > 0
+                                ? ` Missing columns: ${missingColumns.join(', ')}.`
+                                : '';
+                            window.toast.warning(`${validation.message}.${missingHint}`, 5000);
+                        }
                     }
                 }
             }
