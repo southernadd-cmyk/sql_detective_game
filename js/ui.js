@@ -12,6 +12,7 @@ const modalRegistry = {
     'query-builder-modal': { type: MODAL_TYPES.WORKSPACE, priority: 1, zIndex: 100 },
     'query-detail-modal': { type: MODAL_TYPES.WORKSPACE, priority: 1, zIndex: 100 },
     'case-modal': { type: MODAL_TYPES.WORKSPACE, priority: 1, zIndex: 100 },
+    'case-image-modal': { type: MODAL_TYPES.WORKSPACE, priority: 1, zIndex: 100 },
     'evidence-modal': { type: MODAL_TYPES.WORKSPACE, priority: 1, zIndex: 100 },
     'schema-modal': { type: MODAL_TYPES.REFERENCE, priority: 2, zIndex: 200 },
     'table-modal': { type: MODAL_TYPES.REFERENCE, priority: 2, zIndex: 200 }
@@ -44,13 +45,13 @@ function openModal(modalId) {
         console.warn(`Modal ${modalId} not found in registry`);
         return;
     }
-    
+
     const modal = safeGetElement(modalId);
     if (!modal) {
         console.warn(`Modal element ${modalId} not found`);
         return;
     }
-    
+
     // If opening a workspace modal, close other workspace modals
     if (modalInfo.type === MODAL_TYPES.WORKSPACE) {
         closeAllWorkspaceModals();
@@ -61,11 +62,11 @@ function openModal(modalId) {
             openModals.reference.push(modalId);
         }
     }
-    
+
     // Set z-index (base z-index from CSS + modal priority)
     const baseZIndex = 2000; // Base modal z-index from CSS
     modal.style.zIndex = baseZIndex + modalInfo.zIndex;
-    
+
     // Show modal
     modal.style.display = 'block';
 }
@@ -248,6 +249,43 @@ function generateSchemaHTML() {
                 { name: 'reliability', type: 'INTEGER', description: 'Reliability rating (1-5)' },
                 { name: 'statement', type: 'TEXT', description: 'What the witness said' }
             ]
+        },
+        {
+            name: 'locations',
+            description: 'Location reference data',
+            columns: [
+                { name: 'location_code', type: 'TEXT', description: 'Primary key' },
+                { name: 'location_name', type: 'TEXT', description: 'Location name' },
+                { name: 'district', type: 'TEXT', description: 'District' },
+                { name: 'coordinates', type: 'TEXT', description: 'Latitude/longitude string' },
+                { name: 'description', type: 'TEXT', description: 'Location details' }
+            ]
+        },
+        {
+            name: 'time_logs',
+            description: 'Activity timestamps and movements',
+            columns: [
+                { name: 'log_id', type: 'INTEGER', description: 'Primary key' },
+                { name: 'timestamp', type: 'TEXT', description: 'Timestamp' },
+                { name: 'location_code', type: 'TEXT', description: 'Foreign key to locations' },
+                { name: 'activity', type: 'TEXT', description: 'Activity description' },
+                { name: 'person_name', type: 'TEXT', description: 'Person involved' },
+                { name: 'notes', type: 'TEXT', description: 'Additional notes' },
+                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' }
+            ]
+        },
+        {
+            name: 'connections',
+            description: 'Relationships between people and cases',
+            columns: [
+                { name: 'connection_id', type: 'INTEGER', description: 'Primary key' },
+                { name: 'person_a', type: 'TEXT', description: 'First person' },
+                { name: 'person_b', type: 'TEXT', description: 'Second person' },
+                { name: 'relationship', type: 'TEXT', description: 'Relationship type' },
+                { name: 'case_id', type: 'INTEGER', description: 'Foreign key to case_files' },
+                { name: 'strength', type: 'INTEGER', description: 'Relationship strength (1-5)' },
+                { name: 'notes', type: 'TEXT', description: 'Additional notes' }
+            ]
         }
     ];
     
@@ -331,12 +369,29 @@ function renderTables() {
     // Use the first available table list (or render to all if needed)
     const tableList = tableLists[0];
     
-    const tables = [
+    // Get all available tables with their schemas
+    const allTables = [
         { name: 'case_files', description: 'Case file records', columns: ['case_id', 'case_title', 'date', 'location', 'lead_detective', 'case_type', 'severity', 'status', 'signature', 'summary'] },
         { name: 'evidence', description: 'Physical evidence', columns: ['evidence_id', 'case_id', 'item', 'found_at', 'time_found', 'notes', 'is_key'] },
         { name: 'suspects', description: 'People of interest', columns: ['suspect_id', 'case_id', 'name', 'connection', 'alibi', 'suspicion', 'motive_hint'] },
-        { name: 'witness_statements', description: 'Witness statements', columns: ['statement_id', 'case_id', 'witness_name', 'reliability', 'statement'] }
+        { name: 'witness_statements', description: 'Witness statements', columns: ['statement_id', 'case_id', 'witness_name', 'reliability', 'statement'] },
+        { name: 'locations', description: 'Location coordinates', columns: ['location_code', 'location_name', 'district', 'coordinates', 'description'] },
+        { name: 'time_logs', description: 'Activity timestamps', columns: ['log_id', 'timestamp', 'location_code', 'activity', 'person_name', 'notes', 'case_id'] },
+        { name: 'connections', description: 'Person relationships', columns: ['connection_id', 'person_a', 'person_b', 'relationship', 'case_id', 'strength', 'notes'] }
     ];
+
+    // Filter to only show unlocked tables based on current case progress
+    // Default to case_files only if case system isn't ready yet
+    let unlockedTables = ['case_files'];
+    if (window.caseSystem && window.caseSystem.getUnlockedTables) {
+        try {
+            unlockedTables = window.caseSystem.getUnlockedTables();
+        } catch (error) {
+            console.warn('Error getting unlocked tables, using default:', error);
+        }
+    }
+
+    const tables = allTables.filter(table => unlockedTables.includes(table.name));
     
     tableList.innerHTML = '';
     
@@ -551,26 +606,47 @@ function displayResults(query, result) {
     if (result.success && typeof window.caseSystem !== 'undefined' && result.result && result.result.length > 0) {
         const currentCase = window.caseSystem.getCurrentCase();
         if (currentCase) {
-            // Pass the first result set (not the array) to validation
-            const resultSet = result.result[0];
-            const validation = window.caseSystem.validateCaseQuery(currentCase.id, resultSet);
-            if (validation.valid) {
-                // Complete the case BEFORE updating UI
-                window.caseSystem.completeCase(currentCase.id);
+            // Check if case is already completed - if so, skip validation entirely
+            const wasAlreadyCompleted = window.caseSystem.completedCases.has(currentCase.id);
+            
+            if (!wasAlreadyCompleted) {
+                // Pass the first result set (not the array) to validation
+                const resultSet = result.result[0];
+                const validation = window.caseSystem.validateCaseQuery(currentCase.id, resultSet);
                 
-                // Small delay to ensure state is updated
-                setTimeout(() => {
-                    if (window.updateCaseDisplay) {
-                        window.updateCaseDisplay();
+                // Only proceed if validation passes AND case is still not completed
+                // (validateCaseQuery also checks completion status, but double-check here)
+                if (validation.valid && !window.caseSystem.completedCases.has(currentCase.id)) {
+                    // Store the case ID before completing to ensure we only alert for state transitions
+                    const caseIdToComplete = currentCase.id;
+                    
+                    // Complete the case BEFORE updating UI
+                    window.caseSystem.completeCase(caseIdToComplete);
+                    
+                    // Verify the case was actually just completed (state transition check)
+                    // This ensures we only show the alert when the state actually changes
+                    if (window.caseSystem.completedCases.has(caseIdToComplete)) {
+                        // Small delay to ensure state is updated
+                        setTimeout(() => {
+                            if (window.updateCaseDisplay) {
+                                window.updateCaseDisplay();
+                            }
+                            if (window.renderTables) {
+                                window.renderTables();
+                            }
+                            if (window.toast) {
+                                window.toast.success(`Case ${caseIdToComplete} completed! ${validation.message}`, 5000);
+                            } else {
+                                alert(`Case ${caseIdToComplete} completed! ${validation.message}`);
+                            }
+                        }, 100);
                     }
-                    if (window.renderTables) {
-                        window.renderTables();
+                } else if (!validation.valid) {
+                    // Show validation error (but don't log "already completed" as an error)
+                    if (validation.message !== 'Case already completed') {
+                        console.log('Case validation failed:', validation.message);
                     }
-                    alert(`Case ${currentCase.id} completed! ${validation.message}`);
-                }, 100);
-            } else {
-                // Show validation error
-                console.log('Case validation failed:', validation.message);
+                }
             }
         }
     }
@@ -724,6 +800,15 @@ function updateCaseDisplay() {
     if (unlockedTablesCountEl) {
         const unlocked = window.caseSystem.getUnlockedTables();
         unlockedTablesCountEl.textContent = unlocked.length;
+    }
+
+    // Show case image modal when a new case starts
+    // Only show if this is not the initial load (check if we have a previous case)
+    if (window.caseSystem && typeof window.showCaseImageModal === 'function') {
+        // Show the case image modal with a small delay to ensure UI is updated
+        setTimeout(() => {
+            window.showCaseImageModal(currentCase.id);
+        }, 500);
     }
 }
 
@@ -902,12 +987,102 @@ function handleCaseModalClick(e) {
     }
 }
 
+// Case image descriptions for alt text
+const caseImageDescriptions = {
+    1: "Detective Conan standing confidently in front of the Mouri Detective Agency office. A mysterious receipt paper flutters on the desk behind him, with a faint impression visible. The office appears chaotic with papers scattered around, suggesting recent activity. Conan looks determined, pointing towards the desk as if discovering an important clue.",
+    2: "Conan and Ran sitting at Cafe Poirot, a cozy detective-themed cafe. The detective Amuro Tooru stands behind the counter, looking concerned. Sugar jars on the counter have been mysteriously rearranged, and a note with strange symbols lies nearby. The atmosphere is tense, with Conan appearing thoughtful while Ran looks worried.",
+    3: "A group of Detective Boys - Ayumi, Mitsuhiko, Genta, and Conan - gathered around an elementary school locker. Genta looks confused, Ayumi points excitedly, and Mitsuhiko examines the locker door with a magnifying glass. A star-shaped scratch mark is visible on the locker, and the children appear both curious and concerned about this mysterious vandalism.",
+    4: "Inspector Megure stands in the Metropolitan Police Department briefing room, looking frustrated with papers in hand. Officer Takagi appears nervous nearby. A lost-and-found umbrella with a mysterious note is prominently displayed. The room has a serious investigative atmosphere with maps and case files scattered around.",
+    5: "Inspector Megure and Conan examining evidence in the Metropolitan Police evidence locker. Sato stands protectively nearby while Takagi carefully handles evidence bags. Various items are laid out on a table, with Conan focusing intently on one particular piece of evidence. The locker room is filled with organized evidence containers.",
+    6: "Officer Takagi reviewing security footage on a computer screen in a dimly lit room. The footage shows an elevator in an empty building stopping at an unusual hour. Conan stands beside him, looking thoughtful. Various monitors and security equipment surround them, creating a high-tech investigation atmosphere.",
+    7: "Conan standing before a large evidence board covered with photos, timelines, and connecting strings. He appears to be analyzing patterns, with his finger tracing connections between different pieces of evidence. The board shows multiple case photos, timelines, and evidence markers, representing the complexity of the investigation.",
+    8: "Hattori Heiji dramatically bursting into an investigation room, with Sonoko looking excited and Inspector Megure appearing stern. Conan stands calmly in the center, focused on a suspect database on a computer screen. The room is filled with investigation materials and has a tense, energetic atmosphere.",
+    9: "Inspector Megure leaning heavily on his desk, looking exhausted from the investigation. Officer Takagi stands nearby holding documents. Various witness statements and case files are spread across the desk. The atmosphere conveys the weight of responsibility and the complexity of coordinating multiple witness accounts.",
+    10: "The final confrontation scene with all main characters gathered - Conan, Inspector Megure, Officer Takagi, Sato, Hattori Heiji, and others. Everyone looks serious and determined. The room appears to be a central command center with evidence boards, computer screens, and investigative materials everywhere. The atmosphere is one of final resolution."
+};
+
+function showCaseImageModal(caseId) {
+    const modal = safeGetElement('case-image-modal');
+    const imageElement = safeGetElement('case-image-display');
+    const titleElement = safeGetElement('case-image-title');
+    const closeBtn = safeGetElement('case-image-close-btn');
+
+    if (!modal || !imageElement || !titleElement) {
+        console.warn('Case image modal elements not found');
+        return;
+    }
+
+    // Set image source and alt text
+    const imagePath = `images/c${caseId}.webp`;
+    const altText = caseImageDescriptions[caseId] || `Case ${caseId} investigation briefing image`;
+
+    imageElement.src = imagePath;
+    imageElement.alt = altText;
+
+    // Set title
+    titleElement.textContent = `CASE ${caseId} BRIEFING`;
+
+    // Setup close button
+    if (closeBtn) {
+        // Remove existing listener to prevent duplicates
+        closeBtn.removeEventListener('click', closeCaseImageModal);
+        closeBtn.addEventListener('click', closeCaseImageModal);
+    }
+
+    // Setup close button in header
+    const closeElements = modal.querySelectorAll('.case-image-close');
+    closeElements.forEach(element => {
+        element.removeEventListener('click', closeCaseImageModal);
+        element.addEventListener('click', closeCaseImageModal);
+    });
+
+    // Setup click outside to close
+    modal.removeEventListener('click', handleModalBackgroundClick);
+    modal.addEventListener('click', handleModalBackgroundClick);
+
+    // Prevent scrollbars immediately
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.classList.add('modal-open');
+
+    // Show modal
+    openModal('case-image-modal');
+
+    function closeCaseImageModal() {
+        closeModal('case-image-modal');
+        document.body.classList.remove('modal-open');
+
+        // Restore scrolling
+        document.body.style.overflow = '';
+        document.documentElement.style.overflow = '';
+
+        // Trigger onboarding when case image modal closes (only for case 1)
+        if (window.caseSystem && window.caseSystem.getCurrentCase) {
+            const currentCase = window.caseSystem.getCurrentCase();
+            if (currentCase && currentCase.id === 1) {
+                // Start onboarding after modal closes
+                setTimeout(() => {
+                    if (window.onboarding && typeof window.onboarding.init === 'function') {
+                        window.onboarding.init(true);
+                    }
+                }, 500);
+            }
+        }
+    }
+
+    function handleModalBackgroundClick(e) {
+        // Disable background click to close for comic panel style
+        // Comic panels should only close via explicit buttons
+        return;
+    }
+}
+
 function showEvidenceModal() {
     // Update pinboard before showing modal
     if (window.updateEvidenceBoard) {
         window.updateEvidenceBoard();
     }
-    
+
     // Modal is already fullscreen via fullscreen-modal class in HTML
     openModal('evidence-modal');
 }
@@ -1213,9 +1388,10 @@ function insertTableQuery(tableName) {
     if (editorTab) {
         editorTab.click();
     }
-    if (window.monacoEditor) {
-        window.monacoEditor.setValue(`SELECT * FROM ${tableName};`);
-        window.monacoEditor.focus();
+    const textarea = document.getElementById('sql-input');
+    if (textarea) {
+        textarea.value = `SELECT * FROM ${tableName};`;
+        textarea.focus();
     }
     closeModal('table-modal');
 }
@@ -1294,123 +1470,231 @@ function setupModals() {
 
 // Update evidence board with query history
 function updateEvidenceBoard() {
+    // Update both inline and modal pinboards
     const pinboard = document.getElementById('evidence-pinboard');
-    if (!pinboard) {
+    const modalPinboard = document.getElementById('evidence-pinboard-modal');
+    const targetPinboard = pinboard || modalPinboard;
+    
+    if (!targetPinboard) {
         console.warn('Evidence pinboard not found');
         return;
     }
+    
+    // Helper function to create card HTML
+    const createCardHTML = (queryEntry, rotation, isModal) => {
+        const fontSize = isModal ? '11px' : '16px';
+        const queryFontSize = isModal ? '10px' : '14px';
+        const rowFontSize = isModal ? '10px' : '14px';
+        const btnFontSize = isModal ? '10px' : '14px';
+        const btnPadding = isModal ? '6px 8px' : '10px';
+        
+        const taskTitle = queryEntry.taskTitle || 'Query';
+        const queryText = queryEntry.query.length > 100 ? queryEntry.query.substring(0, 100) + '...' : queryEntry.query;
+        
+        return `
+            <div class="pinboard-card" style="--rotation: ${rotation}deg; transform: rotate(${rotation}deg);">
+                <div class="pin"></div>
+                <div class="pinboard-card-content" style="margin-top: 25px;">
+                    <h4 class="pinboard-card-title" style="font-size: ${fontSize} !important; margin-bottom: 12px; font-weight: 700; color: var(--manga-blue); text-transform: uppercase;">${taskTitle}</h4>
+                    <p class="pinboard-card-query" style="font-size: ${queryFontSize} !important; margin-bottom: 12px; opacity: 0.85; word-break: break-word; line-height: 1.5; font-family: 'Courier New', monospace;">${queryText}</p>
+                    <p class="pinboard-card-rows" style="font-size: ${rowFontSize} !important; margin-bottom: 12px; font-weight: 600;">${queryEntry.rowCount} row(s)</p>
+                    <button class="pinboard-card-button btn-pixel btn-secondary" style="font-size: ${btnFontSize} !important; padding: ${btnPadding} !important; width: 100%; font-weight: 700;" data-query-id="${queryEntry.id || index}">VIEW FULL SCREEN</button>
+                </div>
+            </div>
+        `;
+    };
     
     // Get query history
     const queries = window.queryHistory && window.queryHistory.getAll ? window.queryHistory.getAll() : [];
     
     if (queries.length === 0) {
-        pinboard.innerHTML = `
-            <div class="pinboard-placeholder pixel-text-tiny">
-                Run successful queries to see them pinned here
-            </div>
-        `;
+        const placeholder = '<div class="pinboard-placeholder pixel-text-tiny">Run successful queries to see them pinned here</div>';
+        if (pinboard) pinboard.innerHTML = placeholder;
+        if (modalPinboard) modalPinboard.innerHTML = placeholder;
         return;
     }
     
-    // Clear placeholder
-    pinboard.innerHTML = '';
+    // Generate random rotations
+    const rotations = queries.map(() => (Math.random() - 0.5) * 8);
     
-    // Set up staggered manga comic grid layout (already in CSS, just ensure it's applied)
-    // Cards will span different column widths for staggered effect
-    
-    // Generate random rotations for cards
-    const rotations = queries.map(() => (Math.random() - 0.5) * 8); // -4 to +4 degrees
-    
-    // Create cards for each query
-    queries.forEach((queryEntry, index) => {
-        const card = document.createElement('div');
-        card.className = 'pinboard-card';
-        card.style.setProperty('--rotation', rotations[index]);
-        card.style.position = 'relative';
-        card.style.width = '280px';
-        card.style.minHeight = '150px';
-        card.style.background = 'var(--paper)';
-        card.style.border = 'var(--border-medium)';
-        card.style.padding = '15px';
-        card.style.boxShadow = '5px 5px 0 rgba(0, 0, 0, 0.2)';
-        card.style.cursor = 'pointer';
-        card.style.transform = `rotate(${rotations[index]}deg)`;
-        card.style.transition = 'transform 0.1s ease-out';
-        card.style.display = 'flex';
-        card.style.flexDirection = 'column';
-        card.style.justifyContent = 'space-between';
-        
-        // Pin at top
-        const pin = document.createElement('div');
-        pin.className = 'pin';
-        pin.style.position = 'absolute';
-        pin.style.top = '10px';
-        pin.style.left = '50%';
-        pin.style.transform = 'translateX(-50%)';
-        pin.style.width = '20px';
-        pin.style.height = '20px';
-        pin.style.background = 'var(--manga-red)';
-        pin.style.borderRadius = '50%';
-        pin.style.border = '2px solid var(--border-comic)';
-        pin.style.boxShadow = 'inset 0 0 5px rgba(0, 0, 0, 0.5)';
-        pin.style.zIndex = '10';
-        card.appendChild(pin);
-        
-        // Card content
-        const content = document.createElement('div');
-        content.className = 'pinboard-card-content';
-        content.style.marginTop = '25px';
-        
-        // Task title - bigger and readable
-        const taskTitle = document.createElement('h4');
-        taskTitle.className = 'pixel-text-tiny';
-        taskTitle.textContent = queryEntry.taskTitle || 'Query';
-        taskTitle.style.marginBottom = '12px';
-        taskTitle.style.fontWeight = '700';
-        taskTitle.style.fontSize = '16px'; /* Bigger */
-        taskTitle.style.color = 'var(--manga-blue)';
-        taskTitle.style.textTransform = 'uppercase';
-        content.appendChild(taskTitle);
-        
-        // Query preview - bigger and readable
-        const queryPreview = document.createElement('p');
-        queryPreview.className = 'pixel-text-tiny';
-        const queryText = queryEntry.query.length > 100 ? queryEntry.query.substring(0, 100) + '...' : queryEntry.query;
-        queryPreview.textContent = queryText;
-        queryPreview.style.marginBottom = '12px';
-        queryPreview.style.opacity = '0.85';
-        queryPreview.style.fontSize = '14px'; /* Bigger */
-        queryPreview.style.wordBreak = 'break-word';
-        queryPreview.style.lineHeight = '1.5';
-        queryPreview.style.fontFamily = "'Courier New', monospace";
-        content.appendChild(queryPreview);
-        
-        // Row count - bigger
-        const rowCount = document.createElement('p');
-        rowCount.className = 'pixel-text-tiny';
-        rowCount.textContent = `${queryEntry.rowCount} row(s)`;
-        rowCount.style.marginBottom = '12px';
-        rowCount.style.fontSize = '14px'; /* Bigger */
-        rowCount.style.fontWeight = '600';
-        content.appendChild(rowCount);
-        
-        // Click to view button - bigger
-        const viewBtn = document.createElement('button');
-        viewBtn.className = 'btn-pixel btn-secondary pixel-text-tiny';
-        viewBtn.textContent = 'VIEW FULL SCREEN';
-        viewBtn.style.width = '100%';
-        viewBtn.style.fontSize = '14px'; /* Bigger */
-        viewBtn.style.padding = '10px';
-        viewBtn.style.fontWeight = '700';
-        viewBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            showQueryDetail(queryEntry);
+    // Update inline pinboard
+    if (pinboard) {
+        pinboard.innerHTML = '';
+        queries.forEach((queryEntry, index) => {
+            const card = document.createElement('div');
+            card.className = 'pinboard-card';
+            card.style.setProperty('--rotation', rotations[index]);
+            card.style.position = 'relative';
+            card.style.width = '280px';
+            card.style.minHeight = '150px';
+            card.style.background = 'var(--paper)';
+            card.style.border = 'var(--border-medium)';
+            card.style.padding = '15px';
+            card.style.boxShadow = '5px 5px 0 rgba(0, 0, 0, 0.2)';
+            card.style.cursor = 'pointer';
+            card.style.transform = `rotate(${rotations[index]}deg)`;
+            card.style.transition = 'transform 0.1s ease-out';
+            card.style.display = 'flex';
+            card.style.flexDirection = 'column';
+            card.style.justifyContent = 'space-between';
+            
+            const pin = document.createElement('div');
+            pin.className = 'pin';
+            pin.style.position = 'absolute';
+            pin.style.top = '10px';
+            pin.style.left = '50%';
+            pin.style.transform = 'translateX(-50%)';
+            pin.style.width = '20px';
+            pin.style.height = '20px';
+            pin.style.background = 'var(--manga-red)';
+            pin.style.borderRadius = '50%';
+            pin.style.border = '2px solid var(--border-comic)';
+            pin.style.boxShadow = 'inset 0 0 5px rgba(0, 0, 0, 0.5)';
+            pin.style.zIndex = '10';
+            card.appendChild(pin);
+            
+            const content = document.createElement('div');
+            content.className = 'pinboard-card-content';
+            content.style.marginTop = '25px';
+            
+            const taskTitle = document.createElement('h4');
+            taskTitle.className = 'pixel-text-tiny';
+            taskTitle.textContent = queryEntry.taskTitle || 'Query';
+            taskTitle.style.marginBottom = '12px';
+            taskTitle.style.fontWeight = '700';
+            taskTitle.style.fontSize = '16px';
+            taskTitle.style.color = 'var(--manga-blue)';
+            taskTitle.style.textTransform = 'uppercase';
+            content.appendChild(taskTitle);
+            
+            const queryPreview = document.createElement('p');
+            queryPreview.className = 'pixel-text-tiny';
+            const queryText = queryEntry.query.length > 100 ? queryEntry.query.substring(0, 100) + '...' : queryEntry.query;
+            queryPreview.textContent = queryText;
+            queryPreview.style.marginBottom = '12px';
+            queryPreview.style.opacity = '0.85';
+            queryPreview.style.fontSize = '14px';
+            queryPreview.style.wordBreak = 'break-word';
+            queryPreview.style.lineHeight = '1.5';
+            queryPreview.style.fontFamily = "'Courier New', monospace";
+            content.appendChild(queryPreview);
+            
+            const rowCount = document.createElement('p');
+            rowCount.className = 'pixel-text-tiny';
+            rowCount.textContent = `${queryEntry.rowCount} row(s)`;
+            rowCount.style.marginBottom = '12px';
+            rowCount.style.fontSize = '14px';
+            rowCount.style.fontWeight = '600';
+            content.appendChild(rowCount);
+            
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'btn-pixel btn-secondary pixel-text-tiny';
+            viewBtn.textContent = 'VIEW FULL SCREEN';
+            viewBtn.style.width = '100%';
+            viewBtn.style.fontSize = '14px';
+            viewBtn.style.padding = '10px';
+            viewBtn.style.fontWeight = '700';
+            viewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showQueryDetail(queryEntry);
+            });
+            content.appendChild(viewBtn);
+            
+            card.appendChild(content);
+            pinboard.appendChild(card);
         });
-        content.appendChild(viewBtn);
-        
-        card.appendChild(content);
-        pinboard.appendChild(card);
-    });
+    }
+    
+    // Update modal pinboard with smaller text
+    if (modalPinboard) {
+        modalPinboard.innerHTML = '';
+        queries.forEach((queryEntry, index) => {
+            const card = document.createElement('div');
+            card.className = 'pinboard-card';
+            card.style.setProperty('--rotation', rotations[index]);
+            card.style.position = 'relative';
+            card.style.width = '280px';
+            card.style.minHeight = '150px';
+            card.style.background = 'var(--paper)';
+            card.style.border = 'var(--border-medium)';
+            card.style.padding = '15px';
+            card.style.boxShadow = '5px 5px 0 rgba(0, 0, 0, 0.2)';
+            card.style.cursor = 'pointer';
+            card.style.transform = `rotate(${rotations[index]}deg)`;
+            card.style.transition = 'transform 0.1s ease-out';
+            card.style.display = 'flex';
+            card.style.flexDirection = 'column';
+            card.style.justifyContent = 'space-between';
+            
+            const pin = document.createElement('div');
+            pin.className = 'pin';
+            pin.style.position = 'absolute';
+            pin.style.top = '10px';
+            pin.style.left = '50%';
+            pin.style.transform = 'translateX(-50%)';
+            pin.style.width = '20px';
+            pin.style.height = '20px';
+            pin.style.background = 'var(--manga-red)';
+            pin.style.borderRadius = '50%';
+            pin.style.border = '2px solid var(--border-comic)';
+            pin.style.boxShadow = 'inset 0 0 5px rgba(0, 0, 0, 0.5)';
+            pin.style.zIndex = '10';
+            card.appendChild(pin);
+            
+            const content = document.createElement('div');
+            content.className = 'pinboard-card-content';
+            content.style.marginTop = '25px';
+            
+            // Smaller text for modal
+            const taskTitle = document.createElement('h4');
+            taskTitle.className = 'pixel-text-tiny';
+            taskTitle.textContent = queryEntry.taskTitle || 'Query';
+            taskTitle.style.marginBottom = '12px';
+            taskTitle.style.fontWeight = '700';
+            taskTitle.style.fontSize = '12px'; // Smaller for modal
+            taskTitle.style.color = 'var(--manga-blue)';
+            taskTitle.style.textTransform = 'uppercase';
+            content.appendChild(taskTitle);
+            
+            const queryPreview = document.createElement('p');
+            queryPreview.className = 'pixel-text-tiny';
+            const queryText = queryEntry.query.length > 100 ? queryEntry.query.substring(0, 100) + '...' : queryEntry.query;
+            queryPreview.textContent = queryText;
+            queryPreview.style.marginBottom = '12px';
+            queryPreview.style.opacity = '0.85';
+            queryPreview.style.fontSize = '10px'; // Smaller for modal
+            queryPreview.style.wordBreak = 'break-word';
+            queryPreview.style.lineHeight = '1.4';
+            queryPreview.style.fontFamily = "'Courier New', monospace";
+            queryPreview.style.maxHeight = '80px';
+            queryPreview.style.overflow = 'hidden';
+            content.appendChild(queryPreview);
+            
+            const rowCount = document.createElement('p');
+            rowCount.className = 'pixel-text-tiny';
+            rowCount.textContent = `${queryEntry.rowCount} row(s)`;
+            rowCount.style.marginBottom = '12px';
+            rowCount.style.fontSize = '10px'; // Smaller for modal
+            rowCount.style.fontWeight = '600';
+            content.appendChild(rowCount);
+            
+            const viewBtn = document.createElement('button');
+            viewBtn.className = 'btn-pixel btn-secondary pixel-text-tiny';
+            viewBtn.textContent = 'VIEW FULL SCREEN';
+            viewBtn.style.width = '100%';
+            viewBtn.style.fontSize = '10px'; // Smaller for modal
+            viewBtn.style.padding = '6px 8px'; // Smaller padding for modal
+            viewBtn.style.fontWeight = '700';
+            viewBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                showQueryDetail(queryEntry);
+            });
+            content.appendChild(viewBtn);
+            
+            card.appendChild(content);
+            modalPinboard.appendChild(card);
+        });
+    }
 }
 
 // Show query detail in fullscreen modal
@@ -1463,6 +1747,7 @@ window.displayResults = displayResults;
 window.displayTableView = displayTableView;
 window.displayTimelineView = displayTimelineView;
 window.showCaseModal = showCaseModal;
+window.showCaseImageModal = showCaseImageModal;
 window.showEvidenceModal = showEvidenceModal;
 window.showTableModal = showTableModal;
 window.showTableDataInline = showTableDataInline;
@@ -1506,6 +1791,15 @@ function hideQueryBuilderInline() {
 
 // Setup inline query builder (similar to modal setup)
 function setupInlineQueryBuilder() {
+    // Copy visual builder content from modal to inline
+    const modalVisualPanel = document.getElementById('visual-panel');
+    const inlineVisualPanel = document.getElementById('inline-visual-panel');
+
+    if (modalVisualPanel && inlineVisualPanel && inlineVisualPanel.innerHTML.trim() === '<!-- Content will be copied from modal -->') {
+        // Copy the content from modal to inline
+        inlineVisualPanel.innerHTML = modalVisualPanel.innerHTML;
+    }
+
     // Ensure tables are rendered to inline table list
     renderTables();
     
@@ -1533,25 +1827,7 @@ function setupInlineQueryBuilder() {
             });
         });
     }
-    
-    // Copy content from modal to inline panels (only if inline is empty)
-    const modalVisualPanel = document.getElementById('visual-panel');
-    const inlineVisualPanel = document.getElementById('inline-visual-panel');
-    if (modalVisualPanel && inlineVisualPanel) {
-        // Always copy to ensure it's up to date
-        inlineVisualPanel.innerHTML = modalVisualPanel.innerHTML;
-        // Reset drop zone setup flag so listeners are set up for inline version
-        if (inlineVisualPanel.dataset) {
-            delete inlineVisualPanel.dataset.dropZoneSetup;
-            delete inlineVisualPanel.dataset.conditionsSetup;
-        }
-        // Also reset for selected columns list
-        const selectedColumnsList = inlineVisualPanel.querySelector('#selected-columns-list');
-        if (selectedColumnsList && selectedColumnsList.dataset) {
-            delete selectedColumnsList.dataset.dropZoneSetup;
-        }
-    }
-    
+
     const modalSqlPanel = document.getElementById('sql-panel');
     const inlineSqlPanel = document.getElementById('inline-sql-panel');
     if (modalSqlPanel && inlineSqlPanel) {
@@ -1587,7 +1863,7 @@ function setupInlineQueryBuilder() {
             if (sqlPanel) {
                 sqlPanel.hidden = targetTab !== 'sql';
                 if (targetTab === 'sql' && !sqlPanel.hidden) {
-                    // Initialize Monaco editor if not already done
+                    // Initialize SQL editor if not already done
                     setTimeout(() => {
                         if (window.setupSQLEditor) {
                             window.setupSQLEditor();
@@ -1651,6 +1927,8 @@ function showQueryBuilderModal() {
 
 // Legacy function - redirects to inline
 function showQueryBuilderModalOld() {
+    showQueryBuilderInline();
+    return;
     const modal = safeGetElement('query-builder-modal');
     if (!modal) {
         console.error('Query builder modal not found');
@@ -1724,7 +2002,7 @@ function showQueryBuilderModalOld() {
                 visualPanel.hidden = false;
             } else if (targetTab === 'sql' && sqlPanel) {
                 sqlPanel.hidden = false;
-                // Initialize Monaco editor if not already done
+                // Initialize SQL editor if not already done
                 if (window.setupSQLEditor) {
                     window.setupSQLEditor();
                 }
@@ -1751,15 +2029,11 @@ function showQueryBuilderModalOld() {
             executeSqlBtn.parentNode.replaceChild(newExecuteBtn, executeSqlBtn);
         }
         newExecuteBtn.addEventListener('click', () => {
-            // Get query from Monaco editor or textarea
+            // Get query from textarea
             let query = '';
-            if (window.monacoEditor) {
-                query = window.monacoEditor.getValue().trim();
-            } else {
-                const textarea = safeGetElement('sql-input');
-                if (textarea) {
-                    query = textarea.value.trim();
-                }
+            const textarea = safeGetElement('sql-input');
+            if (textarea) {
+                query = textarea.value.trim();
             }
             
             if (query && window.runQuery) {
@@ -1768,7 +2042,11 @@ function showQueryBuilderModalOld() {
                 // Close the modal
                 closeModal('query-builder-modal');
             } else if (!query) {
-                alert('Please enter a SQL query.');
+                if (window.toast) {
+                    window.toast.warning('Please enter a SQL query.', 3000);
+                } else {
+                    alert('Please enter a SQL query.');
+                }
             }
         });
     }
@@ -1781,15 +2059,10 @@ function showQueryBuilderModalOld() {
             clearSqlBtn.parentNode.replaceChild(newClearBtn, clearSqlBtn);
         }
         newClearBtn.addEventListener('click', () => {
-            if (window.monacoEditor) {
-                window.monacoEditor.setValue('');
-                window.monacoEditor.focus();
-            } else {
-                const textarea = safeGetElement('sql-input');
-                if (textarea) {
-                    textarea.value = '';
-                    textarea.focus();
-                }
+            const textarea = safeGetElement('sql-input');
+            if (textarea) {
+                textarea.value = '';
+                textarea.focus();
             }
         });
     }
@@ -1802,8 +2075,12 @@ function showQueryBuilderModalOld() {
             formatSqlBtn.parentNode.replaceChild(newFormatBtn, formatSqlBtn);
         }
         newFormatBtn.addEventListener('click', () => {
-            if (window.monacoEditor) {
-                window.monacoEditor.getAction('editor.action.formatDocument').run();
+            const textarea = safeGetElement('sql-input');
+            if (textarea) {
+                // Simple formatting - capitalize keywords
+                const value = textarea.value;
+                const formatted = value.replace(/\b(select|from|where|join|inner|left|right|outer|on|group|by|order|asc|desc|limit|as|and|or|not|count|sum|avg|max|min|having|distinct)\b/gi, (match) => match.toUpperCase());
+                textarea.value = formatted;
             }
         });
     }

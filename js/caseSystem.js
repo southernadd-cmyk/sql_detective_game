@@ -7,10 +7,9 @@ const caseSystem = {
     cases: [
         {
             id: 1,
-            title: "The Missing Agency Receipt",
-            story: "Back at the Mouri Detective Agency, Kogoro roars about a 'criminal conspiracy' because his expense receipt is missing. Ran is embarrassed. Conan calmly checks the desk and finds a blotter scribble Kogoro didn't notice: 'B7'. It looks like a desk note… but Conan's expression says it's a breadcrumb.",
-            task: "Find the case file for case_id = 1. The summary should reveal a code (like B7) that appears in the case description. Return these columns: case_id, case_title, location, summary",
-            unlockedTables: ['case_files'],
+            title: "The Phantom Receipt",
+            story: "The Mouri Detective Agency office is in chaos. Kogoro is bellowing about a 'criminal conspiracy' because his precious expense receipt has vanished. Ran tries to calm him down while frantically searching drawers. Conan, however, notices something peculiar on the desk blotter—a faint impression that wasn't there before. It's a code. Written in ink that matches none of the office pens. This isn't random vandalism. This is a message. And Conan's sharp eyes suggest it connects to something much larger lurking in Beika City's shadows.",
+            task: "Access the case_files table and locate the entry for case_id = 1. The case summary contains a mysterious code that will be crucial for tracking the BLACK_STAR operative. Extract and display: case_id, case_title, location, and summary columns.",
             validation: {
                 requiredColumns: ['case_id', 'case_title', 'location', 'summary'],
                 requiredRows: 1,
@@ -51,10 +50,9 @@ const caseSystem = {
         },
         {
             id: 2,
-            title: "The Poirot Sugar Swap",
-            story: "Conan heads to Cafe Poirot (because somehow every Beika mystery passes through Poirot eventually). Amuro Tooru mentions a sugar jar swap. Conan doesn't ask about sugar first — he quietly looks for anything connected to the code you found. Amuro's eyes narrow: So you noticed that too.",
-            task: "Search the case_files table for any cases whose summary contains the code you discovered in Case 1. The code should appear in the summary column of your results. Return these columns: case_id, case_title, date, location, summary",
-            unlockedTables: ['case_files'],
+            title: "The Poirot Cipher",
+            story: "Conan leads the team to Cafe Poirot, Beika City's unofficial detective crossroads. The atmosphere is tense—Amuro Tooru is polishing glasses with unusual focus. He mentions a recent incident: someone swapped the sugar jars, leaving behind a note with strange symbols. Conan's mind races back to the code from the agency. He doesn't mention sugar. Instead, he asks about patterns. Amuro's eyes narrow as he sets down his glass. 'So you've noticed it too,' he says quietly. 'The BLACK_STAR has been busy.'",
+            task: "Using the mysterious code you uncovered in Case 1, search the case_files table for all cases whose summary contains this exact code. This will reveal the pattern the BLACK_STAR operative is following. Display: case_id, case_title, date, location, and summary columns.",
             validation: {
                 requiredColumns: ['case_id', 'case_title', 'date', 'location', 'summary'],
                 requiredRows: 1,
@@ -99,10 +97,9 @@ const caseSystem = {
         },
         {
             id: 3,
-            title: "Teitan Locker Rattle",
-            story: "At Teitan, the Detective Boys are buzzing about a scratched star on a locker. Haibara's mood changes when Conan mentions the same 'feel' as the code pattern you found. This doesn't look like random vandalism — it looks like a calling card, the kind a copycat would use.",
-            task: "From the case_files table, find all cases that share the same signature pattern you discovered in Case 2. The signature column in your results should show the pattern. Return these columns: case_id, case_title, signature, location, severity",
-            unlockedTables: ['case_files'],
+            title: "The Star Scratched Locker",
+            story: "The Detective Boys are gathered at Teitan Elementary, their usual meeting spot transformed into an impromptu investigation headquarters. Ayumi points excitedly at a locker with a freshly scratched star symbol. Genta dismisses it as vandalism, but Mitsuhiko notices something odd—the scratches form a perfect five-pointed star. Haibara's usual composure cracks when Conan mentions a pattern he's discovered. 'That symbol...' she whispers. 'It's not random. It's a signature. The same one that's been appearing across the city.' The children fall silent. Their games have crossed into something dangerous.",
+            task: "Now that you've identified the BLACK_STAR signature pattern, query the case_files table to find all cases that bear this exact signature. This will show the full scope of the operative's activities. Include: case_id, case_title, signature, location, and severity columns.",
             validation: {
                 requiredColumns: ['case_id', 'case_title', 'signature', 'location', 'severity'],
                 requiredRows: 1,
@@ -126,10 +123,9 @@ const caseSystem = {
         },
         {
             id: 4,
-            title: "Beika Station Umbrella Switch",
-            story: "Megure hates patterns because patterns mean paperwork. Takagi brings a rainy-day umbrella incident from Beika Station. Conan cares about one thing: which case with the signature pattern you found is getting more dangerous? He picks the worst one first — exactly how Megure would prioritise.",
-            task: "List all cases with the signature pattern you found, ordered by severity (highest first). The severity column in your results will show which case is most dangerous. Take the top case_id as your next target. Return these columns: case_id, case_title, severity, location",
-            unlockedTables: ['case_files'],
+            title: "The Station Umbrella Gambit",
+            story: "Inspector Megure paces the MPD briefing room, his mustache twitching with frustration. 'Patterns mean paperwork,' he grumbles. Officer Takagi presents the latest incident: Beika Station's lost-and-found has been tampered with. Umbrellas that should be paired are now mismatched, and one contains a note with a star symbol. Sato watches Takagi with concern as he nearly spills his coffee. Conan, sitting quietly in the corner, focuses on what matters: among all the BLACK_STAR cases, which one poses the greatest threat? Megure would prioritize by severity. And that's exactly what Conan wants you to do.",
+            task: "With the BLACK_STAR signature confirmed, prioritize the threats. Query all cases with this signature, ordered by severity level (highest number first). The most severe case becomes your primary target. Display: case_id, case_title, severity, and location columns.",
             validation: {
                 requiredColumns: ['case_id', 'case_title', 'severity', 'location'],
                 requiredRows: 1,
@@ -164,9 +160,9 @@ const caseSystem = {
         },
         {
             id: 5,
-            title: "Evidence Locker Opened",
-            story: "MPD finally lets you see the evidence list for that top-priority case you identified. Sato watches Takagi like he might spill coffee on the report. Conan scans for a detail that can't be faked: a time or a code. That's where criminals slip up.",
-            task: "In the evidence table, list all evidence for the target case_id you discovered in Case 4. The notes column in your results should contain a time (like 03:10) that will be important. Return these columns: evidence_id, item, found_at, time_found, notes, is_key",
+            title: "The Evidence Vault",
+            story: "With clearance granted for the highest-severity BLACK_STAR case, you gain access to the Metropolitan Police evidence locker. Sato hovers protectively as Takagi carefully lays out the evidence bags. Conan examines each item with forensic precision, looking for what criminals always leave behind: a timestamp that can't be faked, a moment in time that betrays their presence. He murmurs something significant, spotting a crucial detail in the evidence log. 'That's when they slipped up.' The evidence table is now unlocked—your analysis begins.",
+            task: "Access the newly unlocked evidence table and examine all items for the high-priority case_id you identified in Case 4. Look for temporal clues in the notes column that will reveal the operative's timeline. Include: evidence_id, item, found_at, time_found, notes, and is_key columns.",
             unlockedTables: ['case_files', 'evidence'],
             validation: {
                 requiredColumns: ['evidence_id', 'item', 'found_at', 'time_found', 'notes', 'is_key'],
@@ -207,9 +203,9 @@ const caseSystem = {
         },
         {
             id: 6,
-            title: "The Silent Elevator Ping",
-            story: "Takagi mentions an elevator log that stopped at an impossible time. Conan's brain locks onto the time you discovered in the evidence notes. He's seen criminals try to hide timelines before — and in Beika, the timeline is everything.",
-            task: "Find all evidence items whose notes mention the time you discovered in Case 5. The time should appear in the notes column of your results. Return these columns: evidence_id, case_id, item, time_found, notes",
+            title: "The Midnight Elevator",
+            story: "Officer Takagi reviews the security footage with growing concern. An elevator in a supposedly empty building stops at an impossible hour—since the building should be locked. Conan's mind connects the dots instantly. The timestamp from the evidence vault isn't isolated. It's a pattern. Criminals try to hide in plain sight, but they can't hide their timeline. Every action leaves a digital footprint. The BLACK_STAR operative's movements are now traceable through this temporal signature. 'They were there,' Conan states flatly. 'At exactly that time.'",
+            task: "Using the timestamp you discovered in Case 5, search across all evidence items to find others that mention this exact time. This will reveal the operative's full timeline. Display: evidence_id, case_id, item, time_found, and notes columns.",
             unlockedTables: ['case_files', 'evidence'],
             validation: {
                 requiredColumns: ['evidence_id', 'case_id', 'item', 'time_found', 'notes'],
@@ -240,9 +236,9 @@ const caseSystem = {
         },
         {
             id: 7,
-            title: "Who Keeps Showing Up?",
-            story: "Conan doesn't accuse yet. He counts. The MPD calls it 'analysis'; Conan calls it 'common sense.' If the same clue appears in multiple cases, it's either coincidence… or someone wants you to notice it.",
-            task: "Count how many evidence items each case_id has among the time-linked evidence you found in Case 6. Your results should show case_id and the count. The case with the highest count is your key case. Return these columns: case_id, COUNT(*)",
+            title: "The Evidence Pattern",
+            story: "Conan stands before the evidence board, marker in hand, but doesn't write yet. He counts silently. The Metropolitan Police calls this 'statistical analysis.' Conan calls it 'common sense.' The 03:10 timestamp appears across multiple cases—not randomly, but with purpose. If the same temporal clue appears repeatedly, it's not coincidence. Someone wants investigators to connect these dots. Or perhaps they're so arrogant they can't help leaving their signature everywhere. Either way, the case with the most 03:10 evidence items becomes the key to unraveling the entire BLACK_STAR operation.",
+            task: "Analyze the evidence items you found in Case 6 that share the 03:10 timestamp. Count how many such items exist for each case_id. The case with the highest count of time-linked evidence is your primary target. Return: case_id and COUNT(*) columns.",
             unlockedTables: ['case_files', 'evidence'],
             validation: {
                 requiredColumns: ['case_id'],
@@ -270,9 +266,9 @@ const caseSystem = {
         },
         {
             id: 8,
-            title: "Suspect Board",
-            story: "Heiji arrives and immediately insults Kogoro's 'detective style' as usual. Sonoko insists it's Kaito Kid (as usual). Conan ignores both (as usual) and pulls up the suspect board for the key case you identified in Case 7.",
-            task: "From the suspects table, list suspects for the case_id you identified in Case 7 (the case with the highest evidence count). Order by suspicion (highest first). The top suspect name in your results will be important. Return these columns: name, connection, alibi, suspicion, motive_hint",
+            title: "The Suspect Matrix",
+            story: "Hattori Heiji bursts into the investigation room with his usual dramatic flair, immediately criticizing Kogoro's 'amateur detective style.' Sonoko enthusiastically suggests it's the work of Kaito Kid. Conan ignores both conversations entirely, his attention fixed on the suspect database that has just been unlocked. For the key case you identified—the one with the densest concentration of 03:10 evidence—the suspect board must be examined. Suspicion levels, alibis, connections—all must be analyzed systematically. The BLACK_STAR operative is on this list. And now you have the clearance to find them.",
+            task: "Access the newly unlocked suspects table for the key case_id you identified in Case 7. List all suspects ordered by suspicion level (highest first). The primary suspect will be crucial for the final confrontation. Include: name, connection, alibi, suspicion, and motive_hint columns.",
             unlockedTables: ['case_files', 'evidence', 'suspects'],
             validation: {
                 requiredColumns: ['name', 'connection', 'alibi', 'suspicion', 'motive_hint'],
@@ -314,9 +310,9 @@ const caseSystem = {
         },
         {
             id: 9,
-            title: "The Witness List",
-            story: "Now it's official MPD business: Megure needs a report with witness statements. But witness statements without the case context are chaos — and Conan knows chaos is where criminals hide. Time to connect the testimony to the key case you've been tracking.",
-            task: "Using a JOIN, produce a witness report for your key case_id (from Case 7). Join case_files with witness_statements to show: case title, witness name, reliability, statement. Sort reliability highest first. The reliable witnesses in your results will be needed for the final reveal. Return these columns: case_title, witness_name, reliability, statement",
+            title: "The Witness Network",
+            story: "Inspector Megure leans heavily on his desk, the weight of the investigation pressing down. 'This is getting too big for the usual channels,' he admits. The witness statements database has been unlocked, but raw testimony without context is chaos. Criminals thrive in chaos. Conan knows this better than anyone. The key case you've been tracking has witnesses—people who saw something, heard something, know something. But their statements are scattered across the database. You need to connect them to the case context. JOIN the tables. Cross-reference the testimony. Find the reliable witnesses whose statements can be trusted. They're the final pieces of the BLACK_STAR puzzle.",
+            task: "With witness statements now accessible, perform your first JOIN operation. Connect the case_files and witness_statements tables for your key case_id from Case 7. Display case title, witness name, reliability rating, and statement content. Sort by reliability (highest first) to prioritize trustworthy testimony. Return: case_title, witness_name, reliability, and statement columns.",
             unlockedTables: ['case_files', 'evidence', 'suspects', 'witness_statements'],
             validation: {
                 requiredColumns: ['case_title', 'witness_name', 'reliability', 'statement'],
@@ -349,9 +345,9 @@ const caseSystem = {
         },
         {
             id: 10,
-            title: "The Conan-Style Reveal",
-            story: "This is the classic 'Conan explains it all' moment — except you're doing it with SQL. You have: the key case from Case 7, the top suspect from Case 8, key evidence items, and reliable witnesses from Case 9. Megure wants one table-like output that proves the connection: who, what evidence, and which reliable witness backs it up. Heiji smirks because this is the part he enjoys.",
-            task: "For your key case_id (from Case 7), generate a final reveal view that includes: case title, top suspect name (from Case 8) + suspicion, key evidence items (is_key = 1), reliable witness statements (reliability >= 4 from Case 9). This requires joining multiple tables. Return these columns: case_title, suspect_name, suspicion, evidence_item, evidence_notes, witness_name, reliability",
+            title: "The Black Star Falls",
+            story: "The investigation room falls silent as all eyes turn to Conan. This is the moment he's waited for—the 'explains it all' revelation that ties every thread together. The key case from your analysis, the prime suspect you've identified, the crucial evidence items, the reliable witness testimony—all must be woven into a single, undeniable narrative. Megure needs more than theories; he needs proof. A single query that JOINs all the evidence, all the suspects, all the witnesses. One master table that exposes the BLACK_STAR operative's entire operation. Heiji smirks knowingly. This is the part that separates the amateurs from the masters.",
+            task: "Execute the final revelation: JOIN all four tables (case_files, evidence, suspects, witness_statements) for your key case_id. Include the case title, prime suspect details, key evidence items (is_key = 1), and reliable witness statements (reliability >= 4). This comprehensive JOIN will expose the complete BLACK_STAR operation. Return: case_title, suspect_name, suspicion, evidence_item, evidence_notes, witness_name, and reliability columns.",
             unlockedTables: ['case_files', 'evidence', 'suspects', 'witness_statements'],
             validation: {
                 requiredColumns: ['case_title'],
@@ -440,20 +436,20 @@ const caseSystem = {
     completeCase(caseId) {
         if (!this.completedCases.has(caseId)) {
             this.completedCases.add(caseId);
-            
+
+            // Re-render tables to show newly unlocked tables
+            if (window.renderTables) {
+                window.renderTables();
+            }
+
             // Move to next case if this was the current case
             const caseIndex = this.cases.findIndex(c => c.id === caseId);
             if (caseIndex === this.currentCaseIndex) {
                 this.currentCaseIndex = Math.min(this.currentCaseIndex + 1, this.cases.length);
-                
+
                 // Update UI immediately to show next case
                 if (window.updateCaseDisplay) {
                     window.updateCaseDisplay();
-                }
-                
-                // Render tables with new unlocked tables
-                if (window.renderTables) {
-                    window.renderTables();
                 }
             }
             
@@ -463,12 +459,32 @@ const caseSystem = {
     },
     
     getUnlockedTables() {
-        const currentCase = this.getCurrentCase();
-        if (!currentCase) {
-            // All cases completed, return all tables
-            return ['case_files', 'evidence', 'suspects', 'witness_statements'];
+        // Progressive unlocking based on investigation progress
+        const unlocked = ['case_files']; // Always available
+
+        // Unlock locations after Case 1 (when we understand the scope)
+        if (this.completedCases.has(1) || this.currentCaseIndex >= 1) {
+            unlocked.push('locations');
         }
-        return currentCase.unlockedTables || [];
+
+        // Unlock evidence and time_logs after Case 4 (The Station Umbrella Gambit)
+        if (this.completedCases.has(4) || this.currentCaseIndex >= 4) {
+            unlocked.push('evidence');
+            unlocked.push('time_logs');
+        }
+
+        // Unlock suspects and connections after Case 7 (The Evidence Pattern)
+        if (this.completedCases.has(7) || this.currentCaseIndex >= 7) {
+            unlocked.push('suspects');
+            unlocked.push('connections');
+        }
+
+        // Unlock witness_statements after Case 8 (The Suspect Matrix)
+        if (this.completedCases.has(8) || this.currentCaseIndex >= 8) {
+            unlocked.push('witness_statements');
+        }
+
+        return unlocked;
     },
     
     saveProgress() {
@@ -695,8 +711,17 @@ window.hardResetGame = function() {
             }, 100);
         }
         
+        // Reset onboarding progress as well
+        if (window.onboarding && typeof window.onboarding.reset === 'function') {
+            window.onboarding.reset();
+        } else {
+            // Fallback: clear localStorage directly
+            localStorage.removeItem('onboarding_completed');
+            localStorage.removeItem('onboarding_started');
+        }
+        
         // Reload the page to apply the reset completely
-        if (confirm('Hard reset complete! All progress and query history have been cleared. The page will reload to apply the reset.')) {
+        if (confirm('Hard reset complete! All progress, query history, and onboarding have been cleared. The page will reload to apply the reset.')) {
             window.location.reload();
         } else {
             // Even if user cancels reload, ensure evidence board is cleared

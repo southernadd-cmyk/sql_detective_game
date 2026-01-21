@@ -1,6 +1,17 @@
 // Main application entry point
 let database = null;
 
+// Test if onboarding script loaded
+console.log('[Main] Script loading, checking onboarding...');
+setTimeout(() => {
+    console.log('[Main] Delayed check - window.onboarding:', window.onboarding);
+    if (window.onboarding) {
+        console.log('[Main] Onboarding object found!', Object.keys(window.onboarding));
+    } else {
+        console.error('[Main] Onboarding object NOT found!');
+    }
+}, 100);
+
 // Initialize application
 async function init() {
     try {
@@ -19,8 +30,14 @@ async function init() {
         console.log('Database ready!');
         
         // Initialize UI
-        initUI();
-        renderTables();
+        if (window.initUI) {
+            window.initUI();
+        } else {
+            console.error('initUI not found. Make sure ui.js is loaded.');
+        }
+        if (window.renderTables) {
+            window.renderTables();
+        }
         
         // Initialize query history
         if (window.queryHistory && window.queryHistory.init) {
@@ -65,8 +82,15 @@ async function init() {
         console.log('Game initialized successfully!');
     } catch (error) {
         console.error('Failed to initialize game:', error);
-        alert('Failed to load the game. Please refresh the page.');
+        if (window.toast) {
+            window.toast.error('Failed to load the game. Please refresh the page.', 5000);
+        } else {
+            alert('Failed to load the game. Please refresh the page.');
+        }
     }
+    
+    // Return promise for chaining
+    return Promise.resolve();
 }
 
 // Setup query execution
@@ -78,12 +102,20 @@ function setupQueryExecution() {
 // Run SQL query
 function runQuery(query) {
     if (!database) {
-        alert('Database not initialized. Please refresh the page.');
+        if (window.toast) {
+            window.toast.error('Database not initialized. Please refresh the page.', 5000);
+        } else {
+            alert('Database not initialized. Please refresh the page.');
+        }
         return;
     }
     
     if (!query || !query.trim()) {
-        alert('Please enter a SQL query.');
+        if (window.toast) {
+            window.toast.warning('Please enter a SQL query.', 3000);
+        } else {
+            alert('Please enter a SQL query.');
+        }
         return;
     }
     
@@ -113,9 +145,15 @@ function setupLandingPage() {
             mainGame.style.display = 'block';
             // Initialize the game (which will load progress again, but that's fine)
             if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', init);
+                document.addEventListener('DOMContentLoaded', () => {
+            init().then(() => {
+                // Onboarding will now be triggered when case image modal closes
+            });
+                });
             } else {
-                init();
+                init().then(() => {
+                    // Onboarding will now be triggered when case image modal closes
+                });
             }
             return;
         }
@@ -123,12 +161,22 @@ function setupLandingPage() {
     
     if (startBtn && landingPage && mainGame) {
         startBtn.addEventListener('click', () => {
+            console.log('[Main] Start button clicked');
+            console.log('[Main] window.onboarding:', window.onboarding);
             // Hide landing page
             landingPage.style.display = 'none';
             // Show main game
             mainGame.style.display = 'block';
             // Initialize the game
-            init();
+            init().then(() => {
+                // Onboarding will now be triggered when case image modal closes
+            }).catch((error) => {
+                if (window.toast) {
+                    window.toast.error('Error initializing game: ' + error.message, 5000);
+                } else {
+                    alert('Error initializing game: ' + error.message);
+                }
+            });
         });
     } else {
         // If landing page elements don't exist, just start the game normally
@@ -142,7 +190,13 @@ function setupLandingPage() {
 
 // Setup landing page when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', setupLandingPage);
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('[Main] DOMContentLoaded, setting up landing page');
+        console.log('[Main] window.onboarding at DOMContentLoaded:', window.onboarding);
+        setupLandingPage();
+    });
 } else {
+    console.log('[Main] DOM already ready, setting up landing page');
+    console.log('[Main] window.onboarding:', window.onboarding);
     setupLandingPage();
 }

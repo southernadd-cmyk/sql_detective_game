@@ -16,48 +16,48 @@ const clues = [
     },
     {
         id: 'timeline_start',
-        description: 'Found timeline of events',
-        query: 'SELECT * FROM timeline ORDER BY timestamp',
+        description: 'Found activity timeline',
+        query: 'SELECT * FROM time_logs ORDER BY timestamp',
         check: (result) => result && result.length > 0
     },
     {
         id: 'high_suspicion',
         description: 'Identified most suspicious person',
-        query: 'SELECT name, suspicious_level FROM suspects ORDER BY suspicious_level DESC LIMIT 1',
+        query: 'SELECT name, suspicion FROM suspects ORDER BY suspicion DESC LIMIT 1',
         check: (result) => {
             if (!result || result.length === 0) return false;
             const topSuspect = result[0].values[0];
-            return topSuspect && topSuspect[1] >= 8;
+            return topSuspect && topSuspect[1] >= 4;
         }
     },
     {
         id: 'cctv_evidence',
-        description: 'Found CCTV footage near crime scene',
-        query: 'SELECT * FROM cctv WHERE location_id = 1',
+        description: 'Found key evidence items',
+        query: 'SELECT * FROM evidence WHERE is_key = 1',
         check: (result) => result && result.length > 0
     },
     {
         id: 'witness_statements',
         description: 'Collected witness statements',
-        query: 'SELECT * FROM witnesses',
+        query: 'SELECT * FROM witness_statements',
         check: (result) => result && result.length > 0
     },
     {
         id: 'suspect_timeline',
-        description: 'Connected suspect to timeline events',
-        query: 'SELECT s.name, t.event_description, t.timestamp FROM timeline t JOIN suspects s ON t.suspect_id = s.id',
+        description: 'Connected cases to evidence timeline',
+        query: 'SELECT cf.case_title, e.item, e.time_found FROM case_files cf JOIN evidence e ON cf.case_id = e.case_id',
         check: (result) => result && result.length > 0
     },
     {
         id: 'location_analysis',
         description: 'Analyzed locations near crime scene',
-        query: 'SELECT l.name, COUNT(t.id) as events FROM locations l LEFT JOIN timeline t ON l.id = t.location_id GROUP BY l.name',
+        query: 'SELECT l.location_name, COUNT(*) as events FROM time_logs t JOIN locations l ON t.location_code = l.location_code GROUP BY l.location_name',
         check: (result) => result && result.length > 0
     },
     {
         id: 'motive_found',
         description: 'Found strong motive',
-        query: 'SELECT name, motive FROM suspects WHERE suspicious_level >= 7',
+        query: 'SELECT name, motive_hint FROM suspects WHERE suspicion >= 4',
         check: (result) => result && result.length > 0
     }
 ];

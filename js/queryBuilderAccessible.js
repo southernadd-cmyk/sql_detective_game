@@ -30,14 +30,16 @@ function initAccessibleQueryBuilder() {
     
     // Always re-initialize if switching between inline and modal, or if not initialized
     if (!queryBuilderInitialized) {
-        setupTabNavigation();
         setupVisualBuilderSteps();
-        setupGuidedBuilder();
+        setupRawSqlEditor();
         setupKeyboardNavigation();
         setupFocusManagement();
-        
+
         queryBuilderInitialized = true;
     }
+
+    // Setup tabs every time (in case we're switching between modal and inline)
+    setupTabNavigation();
     
     // Always re-setup step navigation and reset UI state
     setTimeout(() => {
@@ -57,11 +59,42 @@ function initAccessibleQueryBuilder() {
 
 // Tab Navigation with ARIA
 function setupTabNavigation() {
-    const tabs = document.querySelectorAll('[role="tab"]');
-    const panels = document.querySelectorAll('[role="tabpanel"]');
-    
+    // Check if we're in inline or modal mode
+    const isInline = document.getElementById('query-builder-view')?.classList.contains('active');
+
+    const tabSelector = isInline ? '[role="tab"][id^="inline-"]' : '[role="tab"]:not([id^="inline-"])';
+    const panelSelector = isInline ? '[role="tabpanel"][id^="inline-"]' : '[role="tabpanel"]:not([id^="inline-"])';
+
+    const tabs = document.querySelectorAll(tabSelector);
+    const panels = document.querySelectorAll(panelSelector);
+
+
+    // Set initial state - first tab active, others inactive
     tabs.forEach((tab, index) => {
-        tab.addEventListener('click', () => {
+        if (index === 0) {
+            tab.setAttribute('aria-selected', 'true');
+            tab.classList.add('active');
+        } else {
+            tab.setAttribute('aria-selected', 'false');
+            tab.classList.remove('active');
+        }
+    });
+
+    // Set initial panel visibility
+    panels.forEach((panel, index) => {
+        if (index === 0) {
+            panel.hidden = false;
+            panel.style.display = 'block';
+        } else {
+            panel.hidden = true;
+            panel.style.display = 'none';
+        }
+    });
+
+    tabs.forEach((tab, index) => {
+        tab.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent onboarding from interfering
+
             // Update ARIA states
             tabs.forEach(t => {
                 t.setAttribute('aria-selected', 'false');
@@ -69,16 +102,55 @@ function setupTabNavigation() {
             });
             tab.setAttribute('aria-selected', 'true');
             tab.classList.add('active');
-            
+
             // Show/hide panels
             panels.forEach(p => {
                 p.hidden = true;
+                p.style.display = 'none'; // Also set display for extra assurance
             });
             const targetPanel = document.getElementById(tab.getAttribute('aria-controls'));
             if (targetPanel) {
                 targetPanel.hidden = false;
+                targetPanel.style.display = 'block'; // Also set display for extra assurance
             }
-            
+
+            // Pause/resume onboarding based on active tab
+            const isRawSqlTab = tab.id.includes('raw-sql');
+            if (window.onboarding) {
+                if (isRawSqlTab) {
+                    console.log('Pausing onboarding for Raw SQL mode');
+                    // Store current onboarding state
+                    if (!window.onboarding._paused) {
+                        window.onboarding._paused = true;
+                        window.onboarding._savedActive = window.onboarding.isActive;
+                        window.onboarding.isActive = false;
+                        // Hide current toast
+                        window.onboarding.removeCurrentToast();
+                    }
+                } else {
+                    console.log('Resuming onboarding for Visual mode');
+                    // Resume onboarding if it was paused
+                    if (window.onboarding._paused) {
+                        window.onboarding._paused = false;
+                        window.onboarding.isActive = window.onboarding._savedActive || false;
+                        // Re-show current step if onboarding should be active
+                        if (window.onboarding.isActive && !window.onboarding.completedSteps.has(window.onboarding.currentStep)) {
+                            setTimeout(() => {
+                                window.onboarding.showStep(window.onboarding.currentStep);
+                            }, 500);
+                        }
+                    }
+                }
+            }
+
+            // Reset visual builder state when switching to visual mode
+            if (!isRawSqlTab && window.goToStep) {
+                // Reset to step 1 when switching back to visual mode
+                setTimeout(() => {
+                    goToStep(1);
+                }, 100);
+            }
+
             // Focus first element in panel
             setTimeout(() => {
                 const firstFocusable = targetPanel.querySelector('button, input, select, textarea, [tabindex="0"]');
@@ -133,6 +205,11 @@ function setupVisualBuilderSteps() {
     
     // Setup review and execute
     setupReviewAndExecute();
+    
+    // Initialize SQL preview from step 1
+    setTimeout(() => {
+        generateSQL();
+    }, 100);
 }
 
 // Populate available columns from schema (no longer needed - removed from UI)
@@ -172,7 +249,9 @@ function updateSelectedColumns() {
                 accessibleQueryBuilder.selectedColumns = accessibleQueryBuilder.selectedColumns.filter(
                     c => !(c.table === col.table && c.column === col.column)
                 );
-                    updateSelectedColumns();
+                updateSelectedColumns();
+                // Update SQL preview when column is removed
+                generateSQL();
             });
             
             item.appendChild(span);
@@ -180,6 +259,9 @@ function updateSelectedColumns() {
             selectedContainer.appendChild(item);
         });
     }
+    
+    // Update SQL preview whenever columns change
+    generateSQL();
     
     // Announce to screen readers
     const liveRegion = selectedContainer;
@@ -228,7 +310,11 @@ function setupStepNavigation() {
     if (nextToConditionsBtn) {
         nextToConditionsBtn.addEventListener('click', () => {
             if (accessibleQueryBuilder.selectedColumns.length === 0) {
-                alert('Please drag at least one column from Database Files to Selected Columns');
+                if (window.toast) {
+                    window.toast.warning('Please drag at least one column from Database Files to Selected Columns', 4000);
+                } else {
+                    alert('Please drag at least one column from Database Files to Selected Columns');
+                }
                 return;
             }
             goToStep(2);
@@ -310,6 +396,9 @@ function goToStep(step) {
         nextStepEl.classList.add('active');
         nextStepEl.hidden = false;
         accessibleQueryBuilder.currentStep = step;
+        
+        // Update SQL preview when step changes
+        generateSQL();
         
         // Clear conditions list when entering step 2 (don't auto-add conditions)
         if (step === 2) {
@@ -460,16 +549,13 @@ function setupColumnDropZones() {
                 if (!dataStr) return;
                 
                 const data = JSON.parse(dataStr);
-                console.log('Drop event received:', data); // Debug
                 
                 if (data.table && data.column) {
                     // Handle star (*) - select all columns from table
                     if (data.column === '*' || data.type === 'star') {
-                        console.log('Adding all columns from table:', data.table); // Debug
                         addAllColumnsFromTable(data.table);
                     } else {
                         // Add single column to selected columns
-                        console.log('Adding column:', data.table, data.column); // Debug
                         addColumnToSelection(data.table, data.column);
                     }
                 }
@@ -689,45 +775,35 @@ function updateSelectedColumnsDisplay() {
 
 // Setup conditions builder
 function setupConditionsBuilder() {
-    // Setup for both modal and inline versions
-    const panels = [
-        { id: 'visual-panel', type: 'modal' },
-        { id: 'inline-visual-panel', type: 'inline' }
-    ];
-    
-    panels.forEach(({ id, type }) => {
-        const panel = document.getElementById(id);
-        if (!panel) return;
-        
-        // Check if already set up for this panel
-        if (panel.dataset.conditionsSetup === 'true') {
-            return;
-        }
-        panel.dataset.conditionsSetup = 'true';
-        
-        let addBtn = panel.querySelector('#add-condition-btn');
-        if (!addBtn) return;
-        
-        // Remove any existing listeners by cloning the button
-        const newBtn = addBtn.cloneNode(true);
-        if (addBtn.parentNode) {
-            addBtn.parentNode.replaceChild(newBtn, addBtn);
-        }
-        
-        // Add single event listener
-        newBtn.addEventListener('click', () => {
-            addCondition();
-        });
+    if (setupConditionsBuilder._delegated) {
+        return;
+    }
+    setupConditionsBuilder._delegated = true;
+
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('#add-condition-btn');
+        if (!btn) return;
+        const panel = btn.closest('#inline-visual-panel') || btn.closest('#visual-panel');
+        addCondition(panel);
     });
 }
 
-function addCondition() {
-    // Check both inline and modal versions
-    let container = document.getElementById('conditions-list');
+function addCondition(panel) {
+    // Prefer the panel that owns the button, fall back to visible panel
+    let container = null;
+    if (panel) {
+        container = panel.querySelector('#conditions-list');
+    }
     if (!container) {
         const inlinePanel = document.getElementById('inline-visual-panel');
-        if (inlinePanel) {
+        if (inlinePanel && inlinePanel.offsetParent !== null) {
             container = inlinePanel.querySelector('#conditions-list');
+        }
+    }
+    if (!container) {
+        const modalPanel = document.getElementById('visual-panel');
+        if (modalPanel) {
+            container = modalPanel.querySelector('#conditions-list');
         }
     }
     if (!container) return;
@@ -959,28 +1035,86 @@ function addCondition() {
     container.appendChild(conditionEl);
 }
 
-// Generate SQL from builder
+// Generate SQL from builder with metadata about what's being changed
 function generateSQL() {
-    let sql = 'SELECT ';
+    const currentStep = accessibleQueryBuilder.currentStep;
+    const sqlParts = {
+        select: '',
+        from: '',
+        where: '',
+        isSelectChanging: currentStep === 1,
+        isFromChanging: currentStep === 1, // FROM changes when columns are selected
+        isWhereChanging: currentStep === 2
+    };
     
     // SELECT clause
     if (accessibleQueryBuilder.selectedColumns.length === 0) {
-        sql += '*';
+        sqlParts.select = '*';
     } else {
-        sql += accessibleQueryBuilder.selectedColumns.map(c => c.fullName).join(', ');
+        sqlParts.select = accessibleQueryBuilder.selectedColumns.map(c => c.fullName).join(', ');
     }
     
     // FROM clause - handle single or multiple tables
     if (accessibleQueryBuilder.selectedTables.length === 0) {
-        sql += '\nFROM [No table selected]';
+        sqlParts.from = '[No table selected]';
     } else if (accessibleQueryBuilder.selectedTables.length === 1) {
-        sql += `\nFROM ${accessibleQueryBuilder.selectedTables[0]}`;
+        sqlParts.from = accessibleQueryBuilder.selectedTables[0];
     } else {
-        // Multiple tables - use JOIN (simplified: INNER JOIN on common id columns)
-        sql += `\nFROM ${accessibleQueryBuilder.selectedTables[0]}`;
-        for (let i = 1; i < accessibleQueryBuilder.selectedTables.length; i++) {
-            sql += `\nINNER JOIN ${accessibleQueryBuilder.selectedTables[i]} ON ${accessibleQueryBuilder.selectedTables[0]}.id = ${accessibleQueryBuilder.selectedTables[i]}.id`;
+        // Multiple tables - use known relationships where possible
+        const joinDefinitions = [
+            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'evidence', column: 'case_id' } },
+            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'suspects', column: 'case_id' } },
+            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'witness_statements', column: 'case_id' } },
+            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'time_logs', column: 'case_id' } },
+            { left: { table: 'case_files', column: 'case_id' }, right: { table: 'connections', column: 'case_id' } },
+            { left: { table: 'time_logs', column: 'location_code' }, right: { table: 'locations', column: 'location_code' } }
+        ];
+
+        const joinForTables = (joinedTable, targetTable) => {
+            for (const def of joinDefinitions) {
+                if (def.left.table === joinedTable && def.right.table === targetTable) {
+                    return `INNER JOIN ${targetTable} ON ${def.left.table}.${def.left.column} = ${def.right.table}.${def.right.column}`;
+                }
+                if (def.right.table === joinedTable && def.left.table === targetTable) {
+                    return `INNER JOIN ${targetTable} ON ${def.right.table}.${def.right.column} = ${def.left.table}.${def.left.column}`;
+                }
+            }
+            return null;
+        };
+
+        const tables = accessibleQueryBuilder.selectedTables;
+        const baseTable = tables.includes('case_files') ? 'case_files' : tables[0];
+        const joinedTables = new Set([baseTable]);
+        const remainingTables = tables.filter(t => t !== baseTable);
+
+        let fromClause = baseTable;
+        while (remainingTables.length > 0) {
+            let joinedThisPass = false;
+            for (let i = 0; i < remainingTables.length; i++) {
+                const targetTable = remainingTables[i];
+                let joinClause = null;
+                for (const joinedTable of joinedTables) {
+                    joinClause = joinForTables(joinedTable, targetTable);
+                    if (joinClause) break;
+                }
+                if (joinClause) {
+                    fromClause += `\n${joinClause}`;
+                    joinedTables.add(targetTable);
+                    remainingTables.splice(i, 1);
+                    joinedThisPass = true;
+                    break;
+                }
+            }
+            if (!joinedThisPass) {
+                break;
+            }
         }
+
+        remainingTables.forEach(tableName => {
+            fromClause += `\nCROSS JOIN ${tableName}`;
+        });
+
+        sqlParts.from = fromClause;
     }
     
     // WHERE clause - only add if conditions are complete and valid
@@ -992,8 +1126,6 @@ function generateSQL() {
         
         // Only add WHERE clause if we have at least one valid condition
         if (validConditions.length > 0) {
-            sql += '\nWHERE ';
-            
             // Group conditions by connector type for better handling
             // Build condition string with proper grouping
             let conditionStr = '';
@@ -1053,8 +1185,15 @@ function generateSQL() {
                 }
             });
             
-            sql += conditionStr;
+            sqlParts.where = conditionStr;
         }
+    }
+    
+    // Build full SQL string
+    let sql = `SELECT ${sqlParts.select}`;
+    sql += `\nFROM ${sqlParts.from}`;
+    if (sqlParts.where) {
+        sql += `\nWHERE ${sqlParts.where}`;
     }
     
     // Display SQL in multiple places for live preview
@@ -1070,23 +1209,143 @@ function generateSQL() {
         sqlDisplay.textContent = sql;
     }
     
-    // 2. Live preview in Step 1 and Step 2
-    updateLiveSQLPreview(sql);
+    // 2. Live preview in Step 1 and Step 2 with syntax highlighting
+    updateLiveSQLPreview(sql, sqlParts);
+
+    // Trigger onboarding step 5 if SQL preview appears and we're at step 4
+    if (window.onboarding) {
+        if ((window.onboarding.currentStep === 4 || window.onboarding.currentStep === 5) && !window.onboarding.completedSteps.has(5) && !window.onboarding.step5Triggered) {
+            console.log('[Onboarding] Triggering step 5 in 1 second');
+            window.onboarding.step5Triggered = true; // Prevent multiple triggers
+            setTimeout(() => {
+                console.log('[Onboarding] Checking if step 5 should still trigger');
+                if (window.onboarding && (window.onboarding.currentStep === 4 || window.onboarding.currentStep === 5) && !window.onboarding.completedSteps.has(5)) {
+                    console.log('[Onboarding] Showing step 5');
+                    window.onboarding.showStep(5);
+                } else {
+                    console.log('[Onboarding] Step 5 not triggered - conditions changed');
+                }
+            }, 1000); // Wait for preview to render
+        }
+    } else {
+        console.log('[Onboarding] No onboarding object available');
+    }
     
     // Update query state
     accessibleQueryBuilder.queryState = {
         select: accessibleQueryBuilder.selectedColumns,
-        from: accessibleQueryBuilder.selectedTable,
+        from: accessibleQueryBuilder.selectedTables[0] || null,
         where: accessibleQueryBuilder.conditions,
         orderBy: null
     };
 }
 
-// Update live SQL preview in Steps 1 and 2
-function updateLiveSQLPreview(sql) {
+// Render SQL with syntax highlighting and change indicators
+function renderHighlightedSQL(sql, sqlParts) {
+    const currentStep = accessibleQueryBuilder.currentStep;
+    const html = document.createElement('div');
+    html.className = 'sql-highlighted';
+    html.style.fontFamily = 'monospace';
+    html.style.fontSize = '14px';
+    html.style.lineHeight = '1.6';
+    html.style.whiteSpace = 'pre-wrap';
+    html.style.wordWrap = 'break-word';
+    
+    // Helper to escape HTML
+    const escapeHtml = (text) => {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+    
+    // Helper to create a span with styling
+    const createSpan = (text, className, isChanging = false) => {
+        const span = document.createElement('span');
+        span.textContent = text;
+        span.className = className;
+        
+        if (isChanging) {
+            span.style.fontWeight = 'bold';
+            span.style.backgroundColor = 'rgba(255, 255, 0, 0.3)'; // Yellow highlight
+            span.style.borderBottom = '2px solid #ff6b00'; // Orange underline
+            span.style.padding = '2px 4px';
+            span.style.borderRadius = '3px';
+            span.style.transition = 'all 0.2s ease';
+        }
+        
+        return span;
+    };
+    
+    // Parse SQL and highlight
+    const lines = sql.split('\n');
+    lines.forEach((line, lineIndex) => {
+        const lineDiv = document.createElement('div');
+        lineDiv.style.marginBottom = '2px';
+        
+        if (line.startsWith('SELECT')) {
+            // SELECT keyword
+            lineDiv.appendChild(createSpan('SELECT', 'sql-keyword', currentStep === 1));
+            lineDiv.appendChild(document.createTextNode(' '));
+            
+            // SELECT columns
+            const selectPart = line.substring(7).trim();
+            const isSelectChanging = currentStep === 1;
+            lineDiv.appendChild(createSpan(selectPart, 'sql-select', isSelectChanging));
+        } else if (line.startsWith('FROM')) {
+            // FROM keyword
+            lineDiv.appendChild(createSpan('FROM', 'sql-keyword', currentStep === 1));
+            lineDiv.appendChild(document.createTextNode(' '));
+            
+            // FROM table
+            const fromPart = line.substring(5).trim();
+            const isFromChanging = currentStep === 1;
+            lineDiv.appendChild(createSpan(fromPart, 'sql-from', isFromChanging));
+        } else if (line.startsWith('INNER JOIN') || line.startsWith('LEFT JOIN') || line.startsWith('RIGHT JOIN')) {
+            // JOIN clause
+            const joinMatch = line.match(/^(INNER JOIN|LEFT JOIN|RIGHT JOIN)\s+(.+?)(\s+ON\s+(.+))?$/);
+            if (joinMatch) {
+                lineDiv.appendChild(createSpan(joinMatch[1], 'sql-keyword', currentStep === 1));
+                lineDiv.appendChild(document.createTextNode(' '));
+                lineDiv.appendChild(createSpan(joinMatch[2], 'sql-table', currentStep === 1));
+                if (joinMatch[3]) {
+                    lineDiv.appendChild(document.createTextNode(' '));
+                    lineDiv.appendChild(createSpan('ON', 'sql-keyword', currentStep === 1));
+                    lineDiv.appendChild(document.createTextNode(' '));
+                    lineDiv.appendChild(createSpan(joinMatch[4], 'sql-join-condition', currentStep === 1));
+                }
+            } else {
+                lineDiv.textContent = line;
+            }
+        } else if (line.startsWith('WHERE')) {
+            // WHERE keyword
+            lineDiv.appendChild(createSpan('WHERE', 'sql-keyword', currentStep === 2));
+            lineDiv.appendChild(document.createTextNode(' '));
+            
+            // WHERE conditions
+            const wherePart = line.substring(6).trim();
+            const isWhereChanging = currentStep === 2;
+            lineDiv.appendChild(createSpan(wherePart, 'sql-where', isWhereChanging));
+        } else if (line.trim()) {
+            // Other lines (continuations, etc.)
+            lineDiv.textContent = line;
+        }
+        
+        html.appendChild(lineDiv);
+    });
+    
+    return html;
+}
+
+// Update live SQL preview in Steps 1 and 2 with syntax highlighting
+function updateLiveSQLPreview(sql, sqlParts) {
     // Find all step containers
     const step1 = document.querySelector('[data-step="1"]');
     const step2 = document.querySelector('[data-step="2"]');
+    
+    // Default SQL if none provided
+    if (!sql) {
+        sql = 'SELECT *\nFROM [No table selected]';
+    }
     
     // Create or update preview in Step 1
     if (step1) {
@@ -1094,40 +1353,50 @@ function updateLiveSQLPreview(sql) {
         if (!preview1) {
             preview1 = document.createElement('div');
             preview1.className = 'live-sql-preview';
-            preview1.style.marginTop = '15px';
-            preview1.style.padding = '12px';
+            preview1.style.marginTop = '20px';
+            preview1.style.padding = '15px';
             preview1.style.background = 'var(--paper-yellow)';
             preview1.style.border = '2px solid var(--border-comic)';
-            preview1.style.borderRadius = '4px';
-            preview1.style.fontSize = '14px';
-            preview1.style.fontFamily = 'monospace';
-            preview1.style.wordWrap = 'break-word';
-            preview1.style.overflowWrap = 'break-word';
-            preview1.style.whiteSpace = 'pre-wrap';
+            preview1.style.borderRadius = '6px';
+            preview1.style.boxShadow = '0 2px 4px rgba(0,0,0,0.08)';
             preview1.style.maxWidth = '100%';
             
             const label1 = document.createElement('div');
-            label1.textContent = 'Live SQL Preview:';
+            label1.textContent = '📝 LIVE SQL PREVIEW';
             label1.style.fontWeight = 'bold';
-            label1.style.marginBottom = '8px';
-            label1.style.fontSize = '14px';
+            label1.style.marginBottom = '12px';
+            label1.style.fontSize = '16px';
+            label1.style.color = 'var(--manga-blue)';
+            label1.style.textTransform = 'uppercase';
             preview1.appendChild(label1);
             
-            const sqlText1 = document.createElement('div');
-            sqlText1.className = 'live-sql-text';
-            sqlText1.style.wordWrap = 'break-word';
-            sqlText1.style.overflowWrap = 'break-word';
-            sqlText1.style.whiteSpace = 'pre-wrap';
-            preview1.appendChild(sqlText1);
+            const sqlContainer1 = document.createElement('div');
+            sqlContainer1.className = 'live-sql-text';
+            sqlContainer1.style.background = '#fff';
+            sqlContainer1.style.padding = '12px';
+            sqlContainer1.style.borderRadius = '4px';
+            sqlContainer1.style.border = 'none';
+            sqlContainer1.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.1)';
+            preview1.appendChild(sqlContainer1);
             
             const stepContent = step1.querySelector('.step-content');
             if (stepContent) {
-                stepContent.appendChild(preview1);
+                // Insert after selected columns fieldset
+                const selectedColumnsFieldset = stepContent.querySelector('.selected-columns');
+                if (selectedColumnsFieldset && selectedColumnsFieldset.parentNode) {
+                    // Insert after the selected columns fieldset
+                    selectedColumnsFieldset.parentNode.insertBefore(preview1, selectedColumnsFieldset.nextSibling);
+                } else {
+                    // Fallback: insert at the end of step content
+                    stepContent.appendChild(preview1);
+                }
             }
         }
-        const sqlText1 = preview1.querySelector('.live-sql-text');
-        if (sqlText1) {
-            sqlText1.textContent = sql || 'SELECT *\nFROM [No table selected]';
+        const sqlContainer1 = preview1.querySelector('.live-sql-text');
+        if (sqlContainer1) {
+            sqlContainer1.innerHTML = '';
+            const highlighted = renderHighlightedSQL(sql, sqlParts);
+            sqlContainer1.appendChild(highlighted);
         }
     }
     
@@ -1137,40 +1406,43 @@ function updateLiveSQLPreview(sql) {
         if (!preview2) {
             preview2 = document.createElement('div');
             preview2.className = 'live-sql-preview';
-            preview2.style.marginTop = '15px';
-            preview2.style.padding = '12px';
+            preview2.style.marginTop = '20px';
+            preview2.style.padding = '15px';
             preview2.style.background = 'var(--paper-yellow)';
             preview2.style.border = '2px solid var(--border-comic)';
-            preview2.style.borderRadius = '4px';
-            preview2.style.fontSize = '14px';
-            preview2.style.fontFamily = 'monospace';
-            preview2.style.wordWrap = 'break-word';
-            preview2.style.overflowWrap = 'break-word';
-            preview2.style.whiteSpace = 'pre-wrap';
+            preview2.style.borderRadius = '6px';
+            preview2.style.boxShadow = '0 2px 4px rgba(0,0,0,0.08)';
             preview2.style.maxWidth = '100%';
             
             const label2 = document.createElement('div');
-            label2.textContent = 'Live SQL Preview:';
+            label2.textContent = '📝 LIVE SQL PREVIEW';
             label2.style.fontWeight = 'bold';
-            label2.style.marginBottom = '8px';
-            label2.style.fontSize = '14px';
+            label2.style.marginBottom = '12px';
+            label2.style.fontSize = '16px';
+            label2.style.color = 'var(--manga-blue)';
+            label2.style.textTransform = 'uppercase';
             preview2.appendChild(label2);
             
-            const sqlText2 = document.createElement('div');
-            sqlText2.className = 'live-sql-text';
-            sqlText2.style.wordWrap = 'break-word';
-            sqlText2.style.overflowWrap = 'break-word';
-            sqlText2.style.whiteSpace = 'pre-wrap';
-            preview2.appendChild(sqlText2);
+            const sqlContainer2 = document.createElement('div');
+            sqlContainer2.className = 'live-sql-text';
+            sqlContainer2.style.background = '#fff';
+            sqlContainer2.style.padding = '12px';
+            sqlContainer2.style.borderRadius = '4px';
+            sqlContainer2.style.border = 'none';
+            sqlContainer2.style.boxShadow = 'inset 0 1px 3px rgba(0,0,0,0.1)';
+            preview2.appendChild(sqlContainer2);
             
             const stepContent = step2.querySelector('.step-content');
             if (stepContent) {
-                stepContent.appendChild(preview2);
+                // Insert at the beginning of step content
+                stepContent.insertBefore(preview2, stepContent.firstChild);
             }
         }
-        const sqlText2 = preview2.querySelector('.live-sql-text');
-        if (sqlText2) {
-            sqlText2.textContent = sql || 'SELECT *\nFROM [No table selected]';
+        const sqlContainer2 = preview2.querySelector('.live-sql-text');
+        if (sqlContainer2) {
+            sqlContainer2.innerHTML = '';
+            const highlighted = renderHighlightedSQL(sql, sqlParts);
+            sqlContainer2.appendChild(highlighted);
         }
     }
 }
@@ -1181,7 +1453,11 @@ function setupReviewAndExecute() {
         const sql = document.getElementById('generated-sql')?.textContent;
         if (sql) {
             navigator.clipboard.writeText(sql).then(() => {
-                alert('SQL copied to clipboard!');
+                if (window.toast) {
+                    window.toast.success('SQL copied to clipboard!', 2000);
+                } else {
+                    alert('SQL copied to clipboard!');
+                }
             });
         }
     });
@@ -1213,15 +1489,16 @@ function setupReviewAndExecute() {
                 }
             }
             
-            console.log('Execute button clicked, SQL:', sql); // Debug
-            
             if (!sql || !sql.trim()) {
-                alert('No SQL query generated. Please select columns and try again.');
+                if (window.toast) {
+                    window.toast.warning('No SQL query generated. Please select columns and try again.', 4000);
+                } else {
+                    alert('No SQL query generated. Please select columns and try again.');
+                }
                 return;
             }
             
             if (window.runQuery) {
-                console.log('Calling runQuery with:', sql); // Debug
                 // Execute query (this will display results on evidence board)
                 window.runQuery(sql);
                 // Hide query builder and show evidence board after executing
@@ -1230,250 +1507,81 @@ function setupReviewAndExecute() {
                 }
             } else {
                 console.error('runQuery function not found');
-                alert('Query execution function not available. Please refresh the page.');
+                if (window.toast) {
+                    window.toast.error('Query execution function not available. Please refresh the page.', 5000);
+                } else {
+                    alert('Query execution function not available. Please refresh the page.');
+                }
             }
         });
     }
 }
 
 // Guided Builder
-function setupGuidedBuilder() {
-    const form = document.getElementById('guided-builder-form');
-    if (!form) return;
-    
-    // Column type toggle
-    const columnTypeRadios = form.querySelectorAll('input[name="column-type"]');
-    const specificColumnsSection = document.getElementById('specific-columns-section');
-    
-    columnTypeRadios.forEach(radio => {
-        radio.addEventListener('change', () => {
-            if (radio.value === 'specific') {
-                specificColumnsSection.hidden = false;
-            } else {
-                specificColumnsSection.hidden = true;
-            }
-        });
-    });
-    
-    // Filter checkbox
-    const filterCheckbox = document.getElementById('add-filter-checkbox');
-    const filterSection = document.getElementById('filter-section');
-    
-    filterCheckbox?.addEventListener('change', (e) => {
-        filterSection.hidden = !e.target.checked;
-    });
-    
-    // Populate table selects
-    populateGuidedTables();
-    
-    // Add condition button
-    document.getElementById('add-guided-condition-btn')?.addEventListener('click', () => {
-        addGuidedCondition();
-    });
-    
-    // Form submission
-    form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        generateGuidedSQL();
-    });
-}
+function setupRawSqlEditor() {
+    // Handle both modal and inline versions
 
-function populateGuidedTables() {
-    const tables = [
-        { name: 'suspects', description: 'People of interest' },
-        { name: 'locations', description: 'Crime scene locations' },
-        { name: 'timeline', description: 'Chronological events' },
-        { name: 'witnesses', description: 'Witness statements' },
-        { name: 'evidence', description: 'Physical evidence' },
-        { name: 'cctv', description: 'Security footage' }
-    ];
-    
-    // Populate FROM table select
-    const fromSelect = document.getElementById('from-table-select');
-    if (fromSelect) {
-        tables.forEach(table => {
-            const option = document.createElement('option');
-            option.value = table.name;
-            option.textContent = `${table.name} - ${table.description}`;
-            fromSelect.appendChild(option);
-        });
-    }
-    
-    // Populate column table select
-    const columnTableSelect = document.getElementById('column-table-select');
-    if (columnTableSelect) {
-        tables.forEach(table => {
-            const option = document.createElement('option');
-            option.value = table.name;
-            option.textContent = table.name;
-            columnTableSelect.appendChild(option);
-        });
-        
-        // Update columns when table changes
-        columnTableSelect.addEventListener('change', () => {
-            updateGuidedColumns();
-        });
-    }
-    
-    // Initial column load
-    updateGuidedColumns();
-}
-
-function updateGuidedColumns() {
-    const tableSelect = document.getElementById('column-table-select');
-    const container = document.getElementById('column-checkboxes-list');
-    if (!tableSelect || !container) return;
-    
-    const selectedTable = tableSelect.value;
-    const tables = {
-        'suspects': ['id', 'name', 'age', 'occupation', 'address', 'alibi', 'motive', 'suspicious_level'],
-        'locations': ['id', 'name', 'address', 'location_type', 'description', 'distance_from_crime'],
-        'timeline': ['id', 'timestamp', 'event_description', 'location_id', 'suspect_id', 'evidence_type'],
-        'witnesses': ['id', 'name', 'statement', 'credibility', 'location_id'],
-        'evidence': ['id', 'item_name', 'description', 'found_at_location', 'found_by', 'relevance'],
-        'cctv': ['id', 'camera_location', 'timestamp', 'person_seen', 'activity_description', 'location_id']
-    };
-    
-    const columns = tables[selectedTable] || [];
-    container.innerHTML = '';
-    
-    columns.forEach(column => {
-        const label = document.createElement('label');
-        label.className = 'column-checkbox-item';
-        
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.value = `${selectedTable}.${column}`;
-        checkbox.id = `guided-col-${selectedTable}-${column}`;
-        checkbox.setAttribute('aria-label', `Select column ${column}`);
-        
-        const span = document.createElement('span');
-        span.textContent = column;
-        span.className = 'pixel-text-tiny';
-        
-        label.appendChild(checkbox);
-        label.appendChild(span);
-        container.appendChild(label);
-    });
-}
-
-function addGuidedCondition() {
-    const container = document.getElementById('guided-conditions-list');
-    if (!container) return;
-    
-    const conditionEl = document.createElement('div');
-    conditionEl.className = 'condition-item guided-condition-item';
-    
-    // Column select
-    const columnSelect = document.createElement('select');
-    columnSelect.className = 'condition-column';
-    columnSelect.setAttribute('aria-label', 'Select column');
-    
-    // Populate from selected table
-    const fromTable = document.getElementById('from-table-select')?.value;
-    if (fromTable) {
-        const tables = {
-            'suspects': ['id', 'name', 'age', 'occupation', 'address', 'alibi', 'motive', 'suspicious_level'],
-            'locations': ['id', 'name', 'address', 'location_type', 'description', 'distance_from_crime'],
-            'timeline': ['id', 'timestamp', 'event_description', 'location_id', 'suspect_id', 'evidence_type'],
-            'witnesses': ['id', 'name', 'statement', 'credibility', 'location_id'],
-            'evidence': ['id', 'item_name', 'description', 'found_at_location', 'found_by', 'relevance'],
-            'cctv': ['id', 'camera_location', 'timestamp', 'person_seen', 'activity_description', 'location_id']
-        };
-        
-        const columns = tables[fromTable] || [];
-        columns.forEach(col => {
-            const option = document.createElement('option');
-            option.value = `${fromTable}.${col}`;
-            option.textContent = `${fromTable}.${col}`;
-            columnSelect.appendChild(option);
-        });
-    }
-    
-    // Operator
-    const operatorSelect = document.createElement('select');
-    operatorSelect.className = 'condition-operator';
-    operatorSelect.setAttribute('aria-label', 'Select operator');
-    ['=', '!=', '<', '>', '<=', '>=', 'LIKE'].forEach(op => {
-        const option = document.createElement('option');
-        option.value = op;
-        option.textContent = op;
-        operatorSelect.appendChild(option);
-    });
-    
-    // Value
-    const valueInput = document.createElement('input');
-    valueInput.type = 'text';
-    valueInput.className = 'condition-value';
-    valueInput.setAttribute('aria-label', 'Enter value');
-    
-    // Remove
-    const removeBtn = document.createElement('button');
-    removeBtn.type = 'button';
-    removeBtn.className = 'condition-remove-btn pixel-text-tiny';
-    removeBtn.textContent = 'REMOVE';
-    removeBtn.setAttribute('aria-label', 'Remove condition');
-    removeBtn.addEventListener('click', () => conditionEl.remove());
-    
-    conditionEl.appendChild(columnSelect);
-    conditionEl.appendChild(operatorSelect);
-    conditionEl.appendChild(valueInputContainer);
-    conditionEl.appendChild(removeBtn);
-    container.appendChild(conditionEl);
-}
-
-function generateGuidedSQL() {
-    const form = document.getElementById('guided-builder-form');
-    if (!form) return;
-    
-    let sql = 'SELECT ';
-    
-    // Column selection
-    const columnType = form.querySelector('input[name="column-type"]:checked')?.value;
-    if (columnType === 'all') {
-        sql += '*';
-    } else {
-        const checkboxes = form.querySelectorAll('#column-checkboxes-list input[type="checkbox"]:checked');
-        if (checkboxes.length === 0) {
-            alert('Please drag at least one column from Database Files to Selected Columns');
-            return;
-        }
-        sql += Array.from(checkboxes).map(cb => cb.value).join(', ');
-    }
-    
-    // FROM clause
-    const fromTable = form.querySelector('#from-table-select')?.value;
-    if (!fromTable) {
-        alert('Please select a table');
-        return;
-    }
-    sql += `\nFROM ${fromTable}`;
-    
-    // WHERE clause
-    const addFilter = form.querySelector('#add-filter-checkbox')?.checked;
-    if (addFilter) {
-        const conditions = Array.from(form.querySelectorAll('.guided-condition-item'))
-            .map(item => {
-                const column = item.querySelector('.condition-column')?.value;
-                const operator = item.querySelector('.condition-operator')?.value;
-                const value = item.querySelector('.condition-value')?.value;
-                if (column && operator && value) {
-                    return `${column} ${operator} '${value}'`;
+    // Clear SQL buttons
+    ['clear-sql-btn', 'inline-clear-sql-btn'].forEach(btnId => {
+        const clearBtn = document.getElementById(btnId);
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                const textareaId = btnId === 'clear-sql-btn' ? 'raw-sql-textarea' : 'inline-raw-sql-textarea';
+                const textarea = document.getElementById(textareaId);
+                if (textarea) {
+                    textarea.value = '';
+                    textarea.focus();
                 }
-                return null;
-            })
-            .filter(c => c !== null);
-        
-        if (conditions.length > 0) {
-            sql += '\nWHERE ' + conditions.join(' AND ');
+            });
+        }
+    });
+
+    // Execute raw SQL buttons
+    ['execute-raw-sql-btn', 'inline-execute-raw-sql-btn'].forEach(btnId => {
+        const executeBtn = document.getElementById(btnId);
+        if (executeBtn) {
+            executeBtn.addEventListener('click', () => {
+                const textareaId = btnId === 'execute-raw-sql-btn' ? 'raw-sql-textarea' : 'inline-raw-sql-textarea';
+                const textarea = document.getElementById(textareaId);
+                if (textarea && textarea.value.trim()) {
+                    executeRawSqlQuery(textarea.value.trim());
+                } else {
+                    showToast('Please enter a SQL query first.', 'warning');
+                }
+            });
+        }
+    });
+
+    // Handle Enter key in textareas (Ctrl+Enter to execute)
+    ['raw-sql-textarea', 'inline-raw-sql-textarea'].forEach(textareaId => {
+        const textarea = document.getElementById(textareaId);
+        if (textarea) {
+            textarea.addEventListener('keydown', (e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    const btnId = textareaId === 'raw-sql-textarea' ? 'execute-raw-sql-btn' : 'inline-execute-raw-sql-btn';
+                    const executeBtn = document.getElementById(btnId);
+                    executeBtn?.click();
+                }
+            });
+        }
+    });
+}
+
+function executeRawSqlQuery(sqlQuery) {
+    // Use the same runQuery function as the visual builder for consistent behavior
+    if (window.runQuery) {
+        window.runQuery(sqlQuery);
+    } else {
+        console.error('runQuery function not available');
+        if (window.toast) {
+            window.toast.error('Query execution function not available. Please refresh the page.', 5000);
+        } else {
+            alert('Query execution function not available. Please refresh the page.');
         }
     }
-    
-    // Execute query
-    if (window.runQuery) {
-        window.runQuery(sql);
-    }
 }
+
 
 // Keyboard Navigation
 function setupKeyboardNavigation() {

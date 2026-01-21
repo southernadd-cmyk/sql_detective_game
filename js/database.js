@@ -93,6 +93,46 @@ function createSchema() {
             FOREIGN KEY (case_id) REFERENCES case_files(case_id)
         )
     `);
+
+    // Locations - maps location codes to actual places
+    db.run(`
+        CREATE TABLE locations (
+            location_code  TEXT PRIMARY KEY,
+            location_name  TEXT NOT NULL,
+            district       TEXT NOT NULL,
+            coordinates    TEXT NOT NULL,
+            description    TEXT NOT NULL
+        )
+    `);
+
+    // Time logs - tracks all activities and movements
+    db.run(`
+        CREATE TABLE time_logs (
+            log_id         INTEGER PRIMARY KEY,
+            timestamp      TEXT NOT NULL,
+            location_code  TEXT NOT NULL,
+            activity       TEXT NOT NULL,
+            person_name    TEXT,
+            notes          TEXT,
+            case_id        INTEGER,
+            FOREIGN KEY (location_code) REFERENCES locations(location_code),
+            FOREIGN KEY (case_id) REFERENCES case_files(case_id)
+        )
+    `);
+
+    // Connections - relationships between people and cases
+    db.run(`
+        CREATE TABLE connections (
+            connection_id  INTEGER PRIMARY KEY,
+            person_a       TEXT NOT NULL,
+            person_b       TEXT NOT NULL,
+            relationship   TEXT NOT NULL,
+            case_id        INTEGER,
+            strength       INTEGER NOT NULL,
+            notes          TEXT,
+            FOREIGN KEY (case_id) REFERENCES case_files(case_id)
+        )
+    `);
 }
 
 // Populate database with Detective Conan campaign data
@@ -187,6 +227,55 @@ function populateData() {
     const insertWitness = db.prepare('INSERT INTO witness_statements (statement_id, case_id, witness_name, reliability, statement) VALUES (?, ?, ?, ?, ?)');
     witnessStatements.forEach(ws => insertWitness.run(ws));
     insertWitness.free();
+
+    // Locations data
+    const locations = [
+        ['MDA', 'Mouri Detective Agency', 'Beika', '35.6812,139.7671', 'The famous detective agency run by Kogoro Mouri, located in central Beika'],
+        ['POIROT', 'Cafe Poirot', 'Beika', '35.6815,139.7674', 'Upscale coffee shop frequented by detectives and known for excellent coffee'],
+        ['TEITAN', 'Teitan Elementary School', 'Beika', '35.6821,139.7668', 'School where the Detective Boys often meet and investigate'],
+        ['BEIKA_ST', 'Beika Station', 'Beika', '35.6804,139.7677', 'Major transportation hub with lost-and-found office'],
+        ['BOT', 'Beika Office Tower', 'Beika', '35.6832,139.7681', 'Modern office building with restricted access floors'],
+        ['SUZUKI_G', 'Suzuki Gallery', 'Beika', '35.6798,139.7684', 'Art gallery owned by the wealthy Suzuki family'],
+        ['CLOCK_SHOP', 'Beika Clock Shop', 'Beika', '35.6818,139.7673', 'Specialty shop dealing in watches and timepieces'],
+        ['MPD_HQ', 'Metropolitan Police HQ', 'Tokyo', '35.6895,139.6917', 'Tokyo Metropolitan Police Department headquarters']
+    ];
+
+    const insertLocation = db.prepare('INSERT INTO locations (location_code, location_name, district, coordinates, description) VALUES (?, ?, ?, ?, ?)');
+    locations.forEach(loc => insertLocation.run(loc));
+    insertLocation.free();
+
+    // Time logs data
+    const timeLogs = [
+        [1, '2026-01-10 08:30:00', 'MDA', 'Receipt taken', 'Unknown', 'Desk blotter shows B7 code', 1],
+        [2, '2026-01-11 15:45:00', 'POIROT', 'Sugar jar swapped', 'Unknown', 'Customer complained about salty taste', 2],
+        [3, '2026-01-12 16:20:00', 'TEITAN', 'Locker scratched', 'Unknown', 'Star shape with black sticker', 3],
+        [4, '2026-01-13 18:15:00', 'BEIKA_ST', 'Umbrellas mixed', 'Unknown', 'Lost-and-found tampering detected', 4],
+        [5, '2026-01-14 14:30:00', 'SUZUKI_G', 'Fake invite sent', 'Unknown', 'QR code leads to scam site', 5],
+        [6, '2026-01-15 03:10:00', 'BOT', 'Elevator activated', 'Unknown', 'Locked floor access logged', 6],
+        [7, '2026-01-16 03:10:00', 'BEIKA_ST', 'CCTV disabled', 'Unknown', 'Maintenance period suspiciously timed', 4],
+        [8, '2026-01-17 03:10:00', 'CLOCK_SHOP', 'Parcel delivered', 'Courier', 'Package labelled B7 Supplies', 8],
+        [9, '2026-01-18 03:10:00', 'MDA', 'Agency visited', 'Unknown', 'Footprints match station pattern', 1]
+    ];
+
+    const insertTimeLog = db.prepare('INSERT INTO time_logs (log_id, timestamp, location_code, activity, person_name, notes, case_id) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    timeLogs.forEach(log => insertTimeLog.run(log));
+    insertTimeLog.free();
+
+    // Connections data
+    const connections = [
+        [1, 'Kogoro Mouri', 'Inspector Megure', 'Professional colleague', null, 4, 'Work together on major cases'],
+        [2, 'Ran Mouri', 'Sonoko Suzuki', 'Best friends', null, 5, 'Constantly together, share everything'],
+        [3, 'Conan Edogawa', 'Ai Haibara', 'Allies', null, 5, 'Share secret about APTX 4869'],
+        [4, 'Heiji Hattori', 'Kaito Kid', 'Adversaries', null, 3, 'Heiji actively pursues Kid'],
+        [5, 'Inspector Megure', 'Detective Takagi', 'Supervisor-subordinate', null, 4, 'Takagi reports to Megure'],
+        [6, 'Amuro Tooru', 'Bourbon', 'Same person', null, 4, 'Amuro is undercover as Bourbon'],
+        [7, 'Unknown Courier', 'Beika Station Attendant', 'Acquaintance', 4, 2, 'Seen talking during CCTV outage'],
+        [8, 'Clock Shop Owner', 'Unknown Courier', 'Business relationship', 8, 3, 'Regular parcel deliveries']
+    ];
+
+    const insertConnection = db.prepare('INSERT INTO connections (connection_id, person_a, person_b, relationship, case_id, strength, notes) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    connections.forEach(conn => insertConnection.run(conn));
+    insertConnection.free();
 }
 
 // Execute SQL query
@@ -227,21 +316,6 @@ function getAllTables() {
     } catch (error) {
         console.error('Error getting tables:', error);
         return [];
-    }
-}
-
-// Export database for persistence (optional)
-function exportDatabase() {
-    if (db) {
-        return db.export();
-    }
-    return null;
-}
-
-// Import database (optional)
-function importDatabase(data) {
-    if (SQL && data) {
-        db = new SQL.Database(data);
     }
 }
 
